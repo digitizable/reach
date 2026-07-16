@@ -132,25 +132,26 @@ class Backend:
         return asdict(self)
 
 
-# Stable IDs so default profiles can bind out of the box.
-DEFAULT_BACKENDS: tuple[Backend, ...] = (
-    Backend(
-        id="vpn-primary",
-        kind="VPN",
-        name="My VPN",
-        notes="Fill in provider or config under Backends",
-        vpn_protocol="WireGuard",
-        vpn_provider="",
-    ),
-    Backend(
-        id="reality-primary",
-        kind="REALITY",
-        name="Entry REALITY",
-        notes="Fill in server + public key under Backends",
-        reality_port=443,
-        reality_flow="xtls-rprx-vision",
-    ),
-    Backend(
+def _tor_default_backend() -> Backend:
+    """System / Whonix Gateway Tor seed."""
+    from core.whonix import detect
+
+    w = detect()
+    if w.is_workstation:
+        return Backend(
+            id="tor-system",
+            kind="Tor",
+            name="Whonix Gateway Tor",
+            notes=(
+                f"Whonix-Workstation → Gateway SOCKS "
+                f"{w.tor_socks_host}:{w.tor_socks_port}"
+            ),
+            tor_use_system=True,
+            tor_socks_host=w.tor_socks_host,
+            tor_socks_port=w.tor_socks_port,
+            tor_control_port=9051,
+        )
+    return Backend(
         id="tor-system",
         kind="Tor",
         name="System Tor",
@@ -159,8 +160,34 @@ DEFAULT_BACKENDS: tuple[Backend, ...] = (
         tor_socks_host="127.0.0.1",
         tor_socks_port=9050,
         tor_control_port=9051,
-    ),
-)
+    )
+
+
+def default_backend_templates() -> tuple[Backend, ...]:
+    """Default backends; Tor adapts to Whonix when detected."""
+    return (
+        Backend(
+            id="vpn-primary",
+            kind="VPN",
+            name="My VPN",
+            notes="Fill in provider or config under Backends",
+            vpn_protocol="WireGuard",
+            vpn_provider="",
+        ),
+        Backend(
+            id="reality-primary",
+            kind="REALITY",
+            name="Entry REALITY",
+            notes="Fill in server + public key + UUID under Backends",
+            reality_port=443,
+            reality_flow="xtls-rprx-vision",
+        ),
+        _tor_default_backend(),
+    )
+
+
+# Stable IDs so default profiles can bind out of the box.
+DEFAULT_BACKENDS: tuple[Backend, ...] = default_backend_templates()
 
 
 def _slug(name: str) -> str:
@@ -169,9 +196,10 @@ def _slug(name: str) -> str:
 
 
 def _default_backends() -> list[Backend]:
+    # Re-evaluate Tor defaults at seed time (Whonix may be present).
     return [
         Backend(**{f.name: getattr(b, f.name) for f in fields(Backend)})
-        for b in DEFAULT_BACKENDS
+        for b in default_backend_templates()
     ]
 
 
@@ -215,6 +243,35 @@ class BackendStore:
 
         if not self._backends:
             self._backends = _default_backends()
+            self.save()
+        else:
+            self._apply_whonix_tor()
+
+    def _apply_whonix_tor(self) -> None:
+        """Retarget seeded System Tor toward Whonix Gateway when on Workstation."""
+        from core.whonix import detect
+
+        w = detect()
+        if not w.is_workstation:
+            return
+        tor = self.get("tor-system")
+        if tor is None or tor.kind != "Tor":
+            return
+        changed = False
+        if tor.tor_use_system or tor.tor_socks_host in ("", "127.0.0.1", "localhost"):
+            if tor.tor_socks_host != w.tor_socks_host or tor.tor_socks_port != w.tor_socks_port:
+                tor.tor_socks_host = w.tor_socks_host
+                tor.tor_socks_port = w.tor_socks_port
+                tor.tor_use_system = True
+                changed = True
+            if tor.name in ("System Tor", "Tor"):
+                tor.name = "Whonix Gateway Tor"
+                changed = True
+            note = f"Whonix-Workstation → Gateway SOCKS {w.tor_socks_host}:{w.tor_socks_port}"
+            if note not in (tor.notes or ""):
+                tor.notes = note
+                changed = True
+        if changed:
             self.save()
 
     def save(self) -> None:

@@ -68,6 +68,19 @@ spectre health
 
 See the core README and [API docs](https://github.com/digitizable/spectre/blob/main/docs/API.md) for hop behavior and limitations (local SOCKS only; no system-wide kill switch yet).
 
+## Whonix
+
+Install and run Spectre Desktop on **Whonix-Workstation** (not the Gateway):
+
+1. Gateway / `sys-whonix` online with Tor connected  
+2. Core installed on the Workstation (`spectre start`)  
+3. Desktop seed backend becomes **Whonix Gateway Tor** (Gateway SOCKS)  
+4. Use the **Tor only** profile (or any path that binds that Tor backend)
+
+VPN hops are blocked by the core on Workstation unless `SPECTRE_ALLOW_VPN_ON_WHONIX=1` (not recommended). Home shows a Whonix hint when the core reports `environment.whonix`.
+
+More: [Whonix notes in spectre](https://github.com/digitizable/spectre/blob/main/docs/WHONIX.md).
+
 ## Install & run
 
 Dependencies (Debian/Ubuntu/Mint-style):

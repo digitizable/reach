@@ -33,6 +33,7 @@ class CoreStatus:
     dns_ok: bool | None = None
     leak_guard: bool | None = None
     last_payload: dict[str, Any] | None = None
+    environment: dict[str, Any] | None = None
 
 
 # Health probes must stay short so UI refresh never freezes the main thread.
@@ -106,6 +107,7 @@ def _parse_state(value: str | None) -> CoreState:
 def _status_from_json(
     data: dict[str, Any], *, last_payload: dict[str, Any] | None
 ) -> CoreStatus:
+    env = data.get("environment")
     return CoreStatus(
         state=_parse_state(str(data.get("state") or "")),
         message=str(data.get("message") or ""),
@@ -117,6 +119,7 @@ def _status_from_json(
         dns_ok=data.get("dns_ok"),
         leak_guard=data.get("leak_guard"),
         last_payload=last_payload,
+        environment=env if isinstance(env, dict) else None,
     )
 
 

@@ -158,11 +158,17 @@ class HomePage(Gtk.Box):
             CoreState.CONNECTED: "Protected",
         }
 
+        env = st.environment or {}
+        whonix = bool(env.get("whonix"))
+        whonix_role = str(env.get("whonix_role") or "")
+
         if active:
             if st.local_proxy:
                 detail = f"Path up · SOCKS {st.local_proxy}"
             else:
                 detail = st.message or "Traffic is on the active path."
+            if whonix and whonix_role == "workstation":
+                detail += " · Whonix"
         elif st.state == CoreState.DISCONNECTED and st.message and st.message not in (
             "Ready",
             "Disconnected",
@@ -175,11 +181,18 @@ class HomePage(Gtk.Box):
             detail = ready.summary
         elif st.state == CoreState.UNAVAILABLE:
             detail = "Path configured. Core will start on Connect if installed."
+            if whonix:
+                detail = "Whonix detected · start spectred, then Connect"
         else:
             detail = {
                 CoreState.DISCONNECTED: "Traffic is local until you connect.",
                 CoreState.CONNECTING: "Building the path…",
             }.get(st.state, st.message)
+            if whonix and whonix_role == "workstation" and st.state == CoreState.DISCONNECTED:
+                socks = env.get("tor_socks_host")
+                port = env.get("tor_socks_port")
+                if socks and port:
+                    detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
         for k in ("offline", "idle", "busy", "live", "unknown", "bad"):
             self._dot.remove_css_class(f"state-{k}")
