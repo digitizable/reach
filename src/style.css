@@ -1,0 +1,461 @@
+/* Spectre Desktop — compact modern dark
+ *
+ *   chrome  #0d0d0d  rail / header
+ *   field   #111111  content frame
+ *   card    #181818  rows / pills
+ *   line    #262626
+ *   text    #e8e8e8  muted #9a9a9a  quiet #707070
+ * Color only on status dots.
+ */
+
+window.spectre-window {
+  background-color: #0d0d0d;
+  color: #e8e8e8;
+}
+
+.shell {
+  background-color: #0d0d0d;
+}
+
+headerbar.top-header {
+  background-color: #0d0d0d;
+  color: #e8e8e8;
+  border-bottom: 1px solid #222222;
+  box-shadow: none;
+  min-height: 32px;
+  padding: 0 2px;
+}
+
+/* ── Rail ───────────────────────────────────────────── */
+.nav-rail {
+  background-color: #0a0a0a;
+  border-right: 1px solid #222222;
+  min-width: 48px;
+  padding: 6px 0 8px 0;
+}
+
+/* Crisp mark — no opacity/filter, no forced stretch */
+.brand-mark {
+  margin: 8px 0 8px 0;
+  opacity: 1;
+  -gtk-icon-filter: none;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 48px;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  color: #666666;
+}
+
+.nav-btn:hover {
+  background-color: #161616;
+  color: #d0d0d0;
+}
+
+.nav-btn:checked,
+.nav-btn.nav-btn-active,
+button.nav-btn:checked,
+button.nav-btn.nav-btn-active {
+  background-color: #161616;
+  color: #f0f0f0;
+  box-shadow: inset 2px 0 0 0 #e8e8e8;
+}
+
+.nav-btn:focus {
+  outline: none;
+  box-shadow: inset 2px 0 0 0 #666666;
+}
+
+.nav-btn:checked:focus,
+.nav-btn.nav-btn-active:focus {
+  box-shadow: inset 2px 0 0 0 #e8e8e8;
+}
+
+.nav-btn image {
+  opacity: 1;
+  color: inherit;
+}
+
+/* ── Page frame ─────────────────────────────────────── */
+.page-stack,
+.page {
+  background-color: #111111;
+}
+
+.pane-header {
+  background-color: #0d0d0d;
+  border-bottom: 1px solid #222222;
+  padding: 8px 12px;
+  min-height: 36px;
+}
+
+.pane-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8e8e8;
+  letter-spacing: -0.01em;
+}
+
+.page-body {
+  background-color: transparent;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #707070;
+}
+
+.muted {
+  font-size: 11px;
+  color: #9a9a9a;
+  line-height: 1.4;
+}
+
+/* ── Home (compact, centered) ───────────────────────── */
+.home-page {
+  background-color: #111111;
+}
+
+.home-body {
+  background: transparent;
+}
+
+.home-status-line {
+  margin: 0;
+}
+
+.home-status-dot {
+  min-width: 9px;
+  min-height: 9px;
+}
+
+.home-status-title {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: #f0f0f0;
+  line-height: 1.15;
+}
+
+.home-status-detail {
+  font-size: 11px;
+  color: #9a9a9a;
+  line-height: 1.4;
+}
+
+.home-profile {
+  font-size: 11px;
+  font-weight: 500;
+  color: #808080;
+  letter-spacing: 0.02em;
+}
+
+.home-cta {
+  min-height: 34px;
+  font-weight: 600;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.fit-body {
+  background: transparent;
+}
+
+/* ── Cards ──────────────────────────────────────────── */
+.status-tile {
+  background-color: #181818;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.status-tile-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8e8e8;
+}
+
+.status-tile-detail {
+  font-size: 11px;
+  color: #9a9a9a;
+  margin-top: 1px;
+}
+
+.card {
+  background-color: #181818;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+/* ── Path diagram (slim, centered) ──────────────────── */
+.path-diagram {
+  margin: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.path-row {
+  background: transparent;
+  padding: 0;
+}
+
+.path-node {
+  min-width: 0;
+  padding: 0 2px;
+  background: transparent;
+  border: none;
+}
+
+.path-node-icon {
+  color: #c8c8c8;
+  opacity: 1;
+}
+
+/* Brand marks (Tor onion, Project X / Xray) — don't recolor */
+.path-node-icon-tor,
+.path-node-icon-reality {
+  color: unset;
+  -gtk-icon-filter: none;
+}
+
+.path-live .path-node-icon:not(.path-node-icon-tor):not(.path-node-icon-reality) {
+  color: #9fd4a8;
+}
+
+.path-node-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #8a8a8a;
+  letter-spacing: 0.01em;
+}
+
+.path-live .path-node-label {
+  color: #a8c4ae;
+}
+
+.path-arrow {
+  font-size: 13px;
+  color: #555555;
+  padding: 0 2px;
+  min-width: 14px;
+}
+
+.path-empty {
+  font-size: 11px;
+  color: #707070;
+  padding: 4px 0;
+}
+
+/* ── Profile list ───────────────────────────────────── */
+.profile-list {
+  background: transparent;
+}
+
+.profile-row {
+  background-color: #181818;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 5px 8px;
+  margin: 0;
+  color: #e8e8e8;
+  min-height: 0;
+}
+
+.profile-row:hover {
+  background-color: #1c1c1c;
+  border-color: #333333;
+}
+
+.profile-row:checked,
+.profile-row:active {
+  background-color: #1c1c1c;
+  border-color: #3a3a3a;
+  box-shadow: none;
+}
+
+.profile-row-static {
+  opacity: 1;
+}
+
+.profile-row-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8e8e8;
+}
+
+.profile-row-hops {
+  font-size: 10px;
+  color: #9a9a9a;
+}
+
+.field-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #707070;
+}
+
+/* ── Actions ────────────────────────────────────────── */
+.primary-cta {
+  min-height: 36px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+button.suggested-action {
+  background-color: #e4e4e4;
+  color: #0d0d0d;
+  border-radius: 8px;
+  border: none;
+}
+
+button.suggested-action:hover {
+  background-color: #f0f0f0;
+}
+
+button.suggested-action:disabled {
+  background-color: #252525;
+  color: #707070;
+}
+
+button.flat {
+  border-radius: 8px;
+  color: #e8e8e8;
+}
+
+button.pill {
+  border-radius: 8px;
+}
+
+banner {
+  background-color: #181818;
+  color: #d8d8d8;
+  border-bottom: 1px solid #262626;
+}
+
+preferencesgroup,
+list {
+  background-color: transparent;
+}
+
+/* Preference rows only — do NOT style listview rows in dropdowns */
+preferencesgroup > list > row,
+list.boxed-list > row {
+  background-color: #181818;
+  border-radius: 8px;
+  min-height: 48px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+preferencesgroup > list > row.combo,
+list.boxed-list > row.combo {
+  min-height: 52px;
+}
+
+/* Gtk.DropDown trigger (closed) */
+dropdown {
+  min-height: 36px;
+}
+
+dropdown > button,
+dropdown button.toggle {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/*
+ * Open dropdown / combo popover (GTK4 ListView).
+ * Keep options modest height, with clear gap between each.
+ */
+dropdown popover contents,
+popover.menu contents {
+  padding: 6px;
+}
+
+dropdown popover listview,
+popover listview,
+popover.menu listview {
+  background: transparent;
+  padding: 0;
+  border-spacing: 0;
+}
+
+dropdown popover listview > row,
+popover listview > row,
+popover.menu listview > row {
+  min-height: 28px;
+  margin: 3px 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background-color: #181818;
+  font-size: 12px;
+}
+
+dropdown popover listview > row:hover,
+popover listview > row:hover,
+popover.menu listview > row:hover {
+  background-color: #222222;
+}
+
+dropdown popover listview > row:selected,
+popover listview > row:selected,
+popover.menu listview > row:selected {
+  background-color: #2a2a2a;
+}
+
+/* ── State dots ─────────────────────────────────────── */
+.state-dot {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 999px;
+  background-color: #707070;
+}
+
+.state-dot.state-offline {
+  background-color: #e86a6a;
+  box-shadow: 0 0 4px rgba(232, 106, 106, 0.3);
+}
+
+.state-dot.state-idle {
+  background-color: #707070;
+}
+
+.state-dot.state-busy {
+  background-color: #6aa3e8;
+  box-shadow: 0 0 4px rgba(106, 163, 232, 0.28);
+}
+
+.state-dot.state-live {
+  background-color: #5fbf70;
+  box-shadow: 0 0 4px rgba(95, 191, 112, 0.3);
+}
+
+.state-dot.state-unknown {
+  background-color: #707070;
+}
+
+.state-dot.state-bad {
+  background-color: #e86a6a;
+  box-shadow: 0 0 4px rgba(232, 106, 106, 0.3);
+}
+
+toast {
+  color: #e8e8e8;
+}
