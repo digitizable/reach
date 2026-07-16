@@ -2,15 +2,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="980" height="240" viewBox="0 0 980 240">
   
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#151820"/>
-      <stop offset="50%" stop-color="#0e1016"/>
-      <stop offset="100%" stop-color="#090a0e"/>
-    </linearGradient>
-    <radialGradient id="orb" cx="50%" cy="50%" r="55%">
-      <stop offset="0%" stop-color="#323846" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#090a0e" stop-opacity="0"/>
-    </radialGradient>
     <linearGradient id="type" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff"/>
       <stop offset="100%" stop-color="#e2e6ee"/>
@@ -35,8 +26,7 @@
     }
   </style>
 
-  <rect width="980" height="240" fill="url(#bg)"/>
-  <rect width="980" height="240" fill="url(#orb)"/>
+  <rect width="980" height="240" fill="#000000"/>
   <g transform="translate(152.50,20.50)">
     
   <g id="lockup">
