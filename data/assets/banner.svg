@@ -7,7 +7,7 @@
       <stop offset="50%" stop-color="#0e1016"/>
       <stop offset="100%" stop-color="#090a0e"/>
     </linearGradient>
-    <radialGradient id="orb" cx="35%" cy="50%" r="50%">
+    <radialGradient id="orb" cx="50%" cy="50%" r="55%">
       <stop offset="0%" stop-color="#323846" stop-opacity="0.35"/>
       <stop offset="100%" stop-color="#090a0e" stop-opacity="0"/>
     </radialGradient>
@@ -27,78 +27,16 @@
       font-family: "InterBanner";
       src: url("file:///home/paul/.local/share/fonts/inter/Inter-SemiBold.ttf") format("truetype");
       font-weight: 600;
-      font-style: normal;
     }
     @font-face {
       font-family: "InterBanner";
       src: url("file:///home/paul/.local/share/fonts/inter/Inter-Medium.ttf") format("truetype");
       font-weight: 500;
-      font-style: normal;
-    }
-    @font-face {
-      font-family: "InterBanner";
-      src: url("file:///home/paul/.local/share/fonts/inter/Inter-Bold.ttf") format("truetype");
-      font-weight: 700;
-      font-style: normal;
     }
   </style>
 
   <rect width="980" height="240" fill="url(#bg)"/>
   <rect width="980" height="240" fill="url(#orb)"/>
-  <g fill="none" stroke="#8b93a3" stroke-width="0.8" opacity="0.16">
-<path d="M94.0,132.0 L886.0,132.0"/>
-<path d="M82.0,156.0 L898.0,156.0"/>
-<path d="M70.0,180.0 L910.0,180.0"/>
-<path d="M58.0,204.0 L922.0,204.0"/>
-<path d="M46.0,228.0 L934.0,228.0"/>
-<path d="M0,240 L705.6,100.8" opacity="0.7"/>
-<path d="M80,240 L705.6,100.8" opacity="0.7"/>
-<path d="M160,240 L705.6,100.8" opacity="0.7"/>
-<path d="M240,240 L705.6,100.8" opacity="0.7"/>
-<path d="M320,240 L705.6,100.8" opacity="0.7"/>
-<path d="M400,240 L705.6,100.8" opacity="0.7"/>
-<path d="M480,240 L705.6,100.8" opacity="0.7"/>
-<path d="M560,240 L705.6,100.8" opacity="0.7"/>
-<path d="M640,240 L705.6,100.8" opacity="0.7"/>
-<path d="M720,240 L705.6,100.8" opacity="0.7"/>
-<path d="M800,240 L705.6,100.8" opacity="0.7"/>
-<path d="M880,240 L705.6,100.8" opacity="0.7"/>
-<path d="M960,240 L705.6,100.8" opacity="0.7"/>
-</g>
-<g fill="none" stroke="#9aa3b5" stroke-width="1" opacity="0.2">
-<line x1="764.4" y1="48.0" x2="862.4" y2="67.2"/>
-<line x1="862.4" y1="67.2" x2="901.6" y2="36.0"/>
-<line x1="764.4" y1="48.0" x2="803.6" y2="96.0"/>
-<line x1="862.4" y1="67.2" x2="931.0" y2="84.0"/>
-<line x1="901.6" y1="36.0" x2="931.0" y2="84.0"/>
-<line x1="803.6" y1="96.0" x2="901.6" y2="36.0"/>
-</g><g fill="#b8c0d0" opacity="0.26">
-<circle cx="764.4" cy="48.0" r="2.2"/>
-<circle cx="862.4" cy="67.2" r="2.2"/>
-<circle cx="901.6" cy="36.0" r="2.2"/>
-<circle cx="803.6" cy="96.0" r="2.2"/>
-<circle cx="931.0" cy="84.0" r="2.2"/>
-</g>
-<g fill="#ffffff" opacity="0.05">
-<circle cx="23" cy="39" r="0.9"/>
-<circle cx="120" cy="92" r="0.9"/>
-<circle cx="217" cy="145" r="0.9"/>
-<circle cx="314" cy="198" r="0.9"/>
-<circle cx="411" cy="31" r="0.9"/>
-<circle cx="508" cy="84" r="0.9"/>
-<circle cx="605" cy="137" r="0.9"/>
-<circle cx="702" cy="190" r="0.9"/>
-<circle cx="799" cy="23" r="0.9"/>
-<circle cx="896" cy="76" r="0.9"/>
-<circle cx="33" cy="129" r="0.9"/>
-<circle cx="130" cy="182" r="0.9"/>
-<circle cx="227" cy="15" r="0.9"/>
-<circle cx="324" cy="68" r="0.9"/>
-<circle cx="421" cy="121" r="0.9"/>
-<circle cx="518" cy="174" r="0.9"/>
-<circle cx="615" cy="227" r="0.9"/>
-<circle cx="712" cy="60" r="0.9"/>
-</g>
   <g transform="translate(152.50,20.50)">
     
   <g id="lockup">
