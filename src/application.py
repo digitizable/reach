@@ -52,9 +52,23 @@ class SpectreApplication(Adw.Application):
         else:
             self._window.present()
 
-        # Desktop-side: attempt auto-connect after first paint if requested.
+        # After first paint: nudge core online (short timeouts, non-fatal).
+        GLib.idle_add(self._ensure_core_once)
         if self.services.config.auto_connect:
             GLib.idle_add(self._auto_connect_once)
+
+    def _ensure_core_once(self) -> bool:
+        """Try to start spectred without blocking the UI for long."""
+        try:
+            ok = self.services.core.ensure_running(try_start=True)
+            if self._window is not None:
+                self._window.refresh_all()
+                if not ok:
+                    # Quiet: only toast if user enabled auto-connect later
+                    pass
+        except Exception:
+            pass
+        return False
 
     def _auto_connect_once(self) -> bool:
         """Fire-and-forget connect after first paint if configured."""

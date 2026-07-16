@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, Gio, Gtk
 
 from core.backends import (
     BACKEND_KINDS,
@@ -130,10 +130,23 @@ class BackendEditorDialog(Adw.MessageDialog):
             self._vpn_endpoint.set_text(b.vpn_endpoint if b else "")
             self._kind_fields.append(self._field("Endpoint / region", self._vpn_endpoint))
 
+            cfg_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             self._vpn_config = Gtk.Entry()
-            self._vpn_config.set_placeholder_text("Config path or paste note")
+            self._vpn_config.set_placeholder_text("Path to WireGuard .conf")
+            self._vpn_config.set_hexpand(True)
             self._vpn_config.set_text(b.vpn_config if b else "")
-            self._kind_fields.append(self._field("Config", self._vpn_config))
+            cfg_row.append(self._vpn_config)
+            browse = Gtk.Button(label="Browse…")
+            browse.connect("clicked", self._browse_vpn_config)
+            cfg_row.append(browse)
+            self._kind_fields.append(self._field("Config file", cfg_row))
+            hint = Gtk.Label(
+                label="WireGuard: core runs wg-quick up on this file.",
+                xalign=0,
+                wrap=True,
+            )
+            hint.add_css_class("muted")
+            self._kind_fields.append(hint)
 
         elif kind == "REALITY":
             self._r_server = Gtk.Entry()
@@ -144,6 +157,11 @@ class BackendEditorDialog(Adw.MessageDialog):
             self._r_port = Gtk.SpinButton.new_with_range(1, 65535, 1)
             self._r_port.set_value(b.reality_port if b else 443)
             self._kind_fields.append(self._field("Port", self._r_port))
+
+            self._r_uuid = Gtk.Entry()
+            self._r_uuid.set_placeholder_text("VLESS UUID")
+            self._r_uuid.set_text(getattr(b, "reality_uuid", "") if b else "")
+            self._kind_fields.append(self._field("UUID", self._r_uuid))
 
             self._r_pk = Gtk.Entry()
             self._r_pk.set_placeholder_text("Public key")
@@ -212,6 +230,35 @@ class BackendEditorDialog(Adw.MessageDialog):
         item = model.get_item(idx)
         return item.get_string() if item is not None else fallback  # type: ignore[attr-defined]
 
+    def _browse_vpn_config(self, *_a) -> None:
+        dialog = Gtk.FileDialog(title="WireGuard config")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        conf = Gtk.FileFilter()
+        conf.set_name("WireGuard config")
+        conf.add_pattern("*.conf")
+        conf.add_pattern("*.wg")
+        filters.append(conf)
+        anyf = Gtk.FileFilter()
+        anyf.set_name("All files")
+        anyf.add_pattern("*")
+        filters.append(anyf)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(conf)
+        parent = self.get_transient_for()
+
+        def on_open(dlg: Gtk.FileDialog, result) -> None:
+            try:
+                file = dlg.open_finish(result)
+            except Exception:
+                return
+            if file is None:
+                return
+            path = file.get_path()
+            if path:
+                self._vpn_config.set_text(path)
+
+        dialog.open(parent, None, on_open)
+
     def _collect(self) -> dict | None:
         name = self._name.get_text().strip()
         if not name:
@@ -237,6 +284,7 @@ class BackendEditorDialog(Adw.MessageDialog):
             data.update(
                 reality_server=self._r_server.get_text().strip(),
                 reality_port=int(self._r_port.get_value()),
+                reality_uuid=self._r_uuid.get_text().strip(),
                 reality_public_key=self._r_pk.get_text().strip(),
                 reality_short_id=self._r_sid.get_text().strip(),
                 reality_sni=self._r_sni.get_text().strip(),

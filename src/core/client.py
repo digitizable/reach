@@ -35,6 +35,11 @@ class CoreStatus:
     last_payload: dict[str, Any] | None = None
 
 
+# Health probes must stay short so UI refresh never freezes the main thread.
+_HEALTH_TIMEOUT = 0.4
+_START_POLL_TIMEOUT = 0.35
+
+
 def default_socket_path() -> str:
     """Match spectred default: $XDG_RUNTIME_DIR/spectre/spectre.sock."""
     env = os.environ.get("SPECTRE_SOCKET", "").strip()
@@ -98,7 +103,9 @@ def _parse_state(value: str | None) -> CoreState:
         return CoreState.DISCONNECTED
 
 
-def _status_from_json(data: dict[str, Any], *, last_payload: dict[str, Any] | None) -> CoreStatus:
+def _status_from_json(
+    data: dict[str, Any], *, last_payload: dict[str, Any] | None
+) -> CoreStatus:
     return CoreStatus(
         state=_parse_state(str(data.get("state") or "")),
         message=str(data.get("message") or ""),
@@ -131,7 +138,12 @@ class CoreClient:
         self._last_payload: dict[str, Any] | None = None
 
     def _call(
-        self, method: str, path: str, body: dict[str, Any] | None = None
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
     ) -> tuple[int, dict[str, Any]]:
         return _request(
             self.socket_path,
@@ -139,16 +151,16 @@ class CoreClient:
             path,
             body=body,
             token=self.api_token,
-            timeout=float(self.timeout_sec),
+            timeout=float(self.timeout_sec if timeout is None else timeout),
         )
 
     def _core_reachable(self) -> bool:
         if not self.socket_path or not Path(self.socket_path).exists():
             return False
         try:
-            code, data = self._call("GET", "/v1/health")
+            code, data = self._call("GET", "/v1/health", timeout=_HEALTH_TIMEOUT)
             return code == 200 and data.get("status") == "ok"
-        except (OSError, TimeoutError, ConnectionError):
+        except (OSError, TimeoutError, ConnectionError, socket.timeout):
             return False
 
     def ensure_running(self, *, try_start: bool = True) -> bool:
@@ -159,7 +171,8 @@ class CoreClient:
             return False
         if not self._try_start_daemon():
             return False
-        for _ in range(25):
+        # Poll briefly with short timeouts (never 10s × N on the UI thread).
+        for _ in range(20):
             if self._core_reachable():
                 return True
             time.sleep(0.1)
@@ -167,6 +180,13 @@ class CoreClient:
 
     def _try_start_daemon(self) -> bool:
         candidates: list[list[str]] = []
+
+        # systemctl --user first
+        if _which("systemctl"):
+            candidates.append(
+                ["systemctl", "--user", "start", "spectred.service"]
+            )
+
         for name in ("spectre", "spectred"):
             path = _which(name)
             if path and name == "spectre":
@@ -174,12 +194,8 @@ class CoreClient:
             elif path and name == "spectred":
                 candidates.append([path, "-socket", self.socket_path])
 
-        # Sibling of common install roots
         home = Path.home()
-        for base in (
-            home / ".local" / "bin",
-            Path("/usr/local/bin"),
-        ):
+        for base in (home / ".local" / "bin", Path("/usr/local/bin")):
             sp = base / "spectre"
             if sp.is_file():
                 candidates.append([str(sp), "start"])
@@ -187,7 +203,6 @@ class CoreClient:
             if sd.is_file():
                 candidates.append([str(sd), "-socket", self.socket_path])
 
-        # monorepo neighbour
         try:
             from app_config import project_root
 
@@ -207,22 +222,35 @@ class CoreClient:
                 continue
             seen.add(key)
             try:
-                if cmd[0].endswith("spectred") or (len(cmd) > 1 and cmd[1] == "-socket"):
-                    # background daemon
+                if cmd[0] == "systemctl" or (
+                    len(cmd) > 1 and cmd[1] == "start" and not cmd[0].endswith("spectred")
+                ):
+                    # systemctl start / spectre start — short timeout
+                    subprocess.run(  # noqa: S603
+                        cmd,
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=5,
+                    )
+                    return True
+                if cmd[0].endswith("spectred") or (
+                    len(cmd) > 1 and cmd[1] == "-socket"
+                ):
                     subprocess.Popen(  # noqa: S603
                         cmd,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
                     )
-                else:
-                    subprocess.run(  # noqa: S603
-                        cmd,
-                        check=False,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        timeout=8,
-                    )
+                    return True
+                subprocess.run(  # noqa: S603
+                    cmd,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                )
                 return True
             except (OSError, subprocess.SubprocessError):
                 continue
@@ -244,7 +272,9 @@ class CoreClient:
             )
             return self._status
         try:
-            code, data = self._call("GET", "/v1/status")
+            code, data = self._call(
+                "GET", "/v1/status", timeout=min(2.0, float(self.timeout_sec))
+            )
             if code != 200:
                 msg = _error_message(data) or f"status HTTP {code}"
                 self._status = CoreStatus(
@@ -260,7 +290,7 @@ class CoreClient:
             if self._status.active_profile:
                 self._selected_profile = self._status.active_profile
             return self._status
-        except (OSError, TimeoutError, ConnectionError) as exc:
+        except (OSError, TimeoutError, ConnectionError, socket.timeout) as exc:
             self._status = CoreStatus(
                 state=CoreState.UNAVAILABLE,
                 message=f"Core unreachable: {exc}",
@@ -303,7 +333,6 @@ class CoreClient:
         try:
             code, data = self._call("POST", "/v1/connect", payload)
             if code >= 400:
-                # Core returned structured error
                 msg = _error_message(data) or f"connect failed ({code})"
                 self._status = CoreStatus(
                     state=CoreState.DISCONNECTED,
@@ -316,7 +345,7 @@ class CoreClient:
                 return self._status
             self._status = _status_from_json(data, last_payload=self._last_payload)
             return self._status
-        except (OSError, TimeoutError, ConnectionError) as exc:
+        except (OSError, TimeoutError, ConnectionError, socket.timeout) as exc:
             self._status = CoreStatus(
                 state=CoreState.UNAVAILABLE,
                 message=f"Connect failed: {exc}",
@@ -332,12 +361,14 @@ class CoreClient:
         if not self._core_reachable():
             return self.refresh()
         try:
-            code, data = self._call("POST", "/v1/disconnect")
+            code, data = self._call(
+                "POST", "/v1/disconnect", timeout=min(5.0, float(self.timeout_sec))
+            )
             if code >= 400:
                 return self.refresh()
             self._status = _status_from_json(data, last_payload=None)
             return self._status
-        except (OSError, TimeoutError, ConnectionError):
+        except (OSError, TimeoutError, ConnectionError, socket.timeout):
             return self.refresh()
 
 

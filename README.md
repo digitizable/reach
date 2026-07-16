@@ -37,9 +37,13 @@ On Connect, the desktop:
 Install the core first:
 
 ```bash
-cd ../spectre && ./install.sh    # → ~/.local/bin/spectred
-spectre start
+cd ../spectre && ./install.sh    # binaries + user systemd unit
+spectre health
+# or without systemd: make install && spectre start
 ```
+
+The desktop will try `systemctl --user start spectred` / `spectre start` on
+launch and Connect if the core is offline.
 
 ## Data
 

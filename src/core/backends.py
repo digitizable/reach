@@ -56,6 +56,7 @@ class Backend:
     # --- REALITY / Xray ---
     reality_server: str = ""
     reality_port: int = 443
+    reality_uuid: str = ""
     reality_public_key: str = ""
     reality_short_id: str = ""
     reality_sni: str = ""
@@ -82,13 +83,20 @@ class Backend:
         if not self.name.strip() or self.kind not in BACKEND_KINDS:
             return False
         if self.kind == "VPN":
+            # WireGuard needs a .conf path for the core; other protocols keep soft draft rules.
+            if (self.vpn_protocol or "WireGuard") == "WireGuard":
+                return bool(self.vpn_config.strip())
             return bool(
                 self.vpn_provider.strip()
                 or self.vpn_config.strip()
                 or self.vpn_endpoint.strip()
             )
         if self.kind == "REALITY":
-            return bool(self.reality_server.strip() and self.reality_public_key.strip())
+            return bool(
+                self.reality_server.strip()
+                and self.reality_public_key.strip()
+                and self.reality_uuid.strip()
+            )
         if self.kind == "Tor":
             return self.tor_use_system or bool(
                 self.tor_socks_host.strip() and self.tor_socks_port > 0
