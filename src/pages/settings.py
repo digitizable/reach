@@ -49,12 +49,13 @@ class SettingsPage(Gtk.Box):
     def _group_core(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Spectre core")
-        g.set_description("How this desktop shell reaches the headless core")
-
-        self._socket = Adw.EntryRow(
-            title="Socket path",
-            subtitle=f"Empty = {default_socket_path()}",
+        g.set_description(
+            "How this desktop shell reaches the headless core. "
+            f"Default socket: {default_socket_path()}"
         )
+
+        # Note: Adw.EntryRow has no "subtitle" on older libadwaita — only title.
+        self._socket = Adw.EntryRow(title="Socket path (empty = default)")
         self._socket.set_text(self._cfg.core_socket)
         if hasattr(self._socket, "set_show_apply_button"):
             self._socket.set_show_apply_button(False)
