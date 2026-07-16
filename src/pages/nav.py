@@ -33,6 +33,12 @@ NAV_ITEMS: tuple[NavItem, ...] = (
         tooltip="Backends",
     ),
     NavItem(
+        id="apps",
+        title="Apps",
+        icon_name="application-x-executable-symbolic",
+        tooltip="Apps routed through Spectre",
+    ),
+    NavItem(
         id="settings",
         title="Settings",
         icon_name="preferences-system-symbolic",

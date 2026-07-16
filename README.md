@@ -29,7 +29,24 @@ That split answers “which VPN do I use?”: define it under **Backends**, bind
 | **Home** | Status, path diagram, Connect / Disconnect, local SOCKS when up |
 | **Profiles** | Path recipes; hop order; bind each hop to a backend |
 | **Backends** | Concrete adapters (fill provider/config/UUID/etc.) |
+| **Apps** | Applications that launch through the active path |
 | **Settings** | Core socket, API token, network/privacy policy hints, logging |
+
+### App routing
+
+Spectre does **not** force every process on the machine into the tunnel. Apps you register under **Apps** are launched through the active path:
+
+1. Connect a profile (local SOCKS comes up)
+2. **Apps** → add a command or `.desktop` file
+3. **Launch** — starts the app with `ALL_PROXY` / `HTTP(S)_PROXY` → Spectre SOCKS
+
+Optional **proxychains** mode (needs `proxychains-ng`) for apps that ignore proxy environment variables.
+
+CLI:
+
+```bash
+spectre run -- curl https://am.i.mullvad.net/json
+```
 
 Defaults seed example backends (draft VPN, draft REALITY, **System Tor**) and sample profiles. **Tor only** is ready out of the box if Tor is listening on `9050`.
 
@@ -113,6 +130,7 @@ python src/main.py
 |------|----------|
 | `~/.local/share/spectre-desktop/backends.json` | Backend catalog |
 | `~/.local/share/spectre-desktop/profiles.json` | Profiles + hop bindings |
+| `~/.local/share/spectre-desktop/apps.json` | Apps routed through Spectre |
 | `~/.config/spectre-desktop/config.json` | Settings + last active profile |
 | `~/.local/share/spectre-desktop/desktop.log` | Optional desktop log |
 

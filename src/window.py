@@ -8,6 +8,7 @@ from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 from app_config import APPLICATION_ICON, APPLICATION_NAME, project_root
 from core.client import CoreState
+from pages.apps import AppsPage
 from pages.backends import BackendsPage
 from pages.home import HomePage
 from pages.nav import DEFAULT_PAGE, NAV_ITEMS, NavItem
@@ -33,6 +34,7 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._home: HomePage | None = None
         self._profiles: ProfilesPage | None = None
         self._backends: BackendsPage | None = None
+        self._apps: AppsPage | None = None
         self._window_title: Adw.WindowTitle | None = None
         self._ready = False
 
@@ -202,11 +204,18 @@ class SpectreWindow(Adw.ApplicationWindow):
             on_changed=self._on_data_changed,
             on_toast=self.toast,
         )
+        self._apps = AppsPage(
+            self._services,
+            parent_window=self,
+            on_toast=self.toast,
+            on_navigate=self._navigate,
+        )
         settings = SettingsPage(self._services, on_toast=self.toast)
 
         stack.add_named(self._home, "home")
         stack.add_named(self._profiles, "profiles")
         stack.add_named(self._backends, "backends")
+        stack.add_named(self._apps, "apps")
         stack.add_named(settings, "settings")
         self._page_stack = stack
         return stack
@@ -219,6 +228,8 @@ class SpectreWindow(Adw.ApplicationWindow):
             self._profiles.reload()
         if self._backends is not None:
             self._backends.reload()
+        if self._apps is not None:
+            self._apps.reload()
         self._sync_chrome()
 
     def _on_data_changed(self) -> None:
@@ -242,6 +253,8 @@ class SpectreWindow(Adw.ApplicationWindow):
             self._profiles.reload()
         elif page_id == "backends" and self._backends is not None:
             self._backends.reload()
+        elif page_id == "apps" and self._apps is not None:
+            self._apps.reload()
 
         self._sync_chrome()
 

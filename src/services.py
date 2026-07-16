@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app_config import user_config_dir
+from core.apps import AppStore
 from core.backends import BackendStore
 from core.client import CoreClient, CoreStatus, default_socket_path
 from core.desktop_log import write_log
@@ -88,6 +89,7 @@ class Services:
     core: CoreClient = field(default_factory=CoreClient)
     profiles: ProfileStore = field(default_factory=ProfileStore)
     backends: BackendStore = field(default_factory=BackendStore)
+    apps: AppStore = field(default_factory=AppStore)
     _config_path: Path = field(default_factory=lambda: user_config_dir() / "config.json")
 
     @classmethod
@@ -102,6 +104,7 @@ class Services:
         )
         profiles = ProfileStore()
         backends = BackendStore()
+        apps = AppStore()
         # Keep hop bindings honest against the backend catalog.
         profiles.reconcile_backends(backends)
         if config.last_profile_id:
@@ -115,6 +118,7 @@ class Services:
             core=core,
             profiles=profiles,
             backends=backends,
+            apps=apps,
             _config_path=path,
         )
         svc.log("Services ready")
