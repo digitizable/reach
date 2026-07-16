@@ -249,7 +249,14 @@ class Services:
     def connect_active(self) -> tuple[CoreStatus | None, Readiness]:
         """Validate locally (live probes), then hand off to core."""
         from core.mullvad import ensure_connected
-        from core.readiness import profile_uses_mullvad_app_socks
+        from core.netns_guard import clearnet_netns_block_message, in_clearnet_netns
+        from core.readiness import Readiness, profile_uses_mullvad_app_socks
+
+        # Desktop must not run inside the exclude netns (Mullvad SOCKS dies).
+        if in_clearnet_netns():
+            msg = clearnet_netns_block_message()
+            self.log(f"Connect blocked: {msg}", level="warn")
+            return None, Readiness(False, [msg])
 
         profile = self.active_profile()
         # Official Mullvad support: bring tunnel up before SOCKS-hop preflight.

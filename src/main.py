@@ -23,8 +23,12 @@ from application import SpectreApplication  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
-    return SpectreApplication().run(argv if argv is not None else sys.argv)
+    code = SpectreApplication().run(argv if argv is not None else sys.argv)
+    # GApplication can return while non-daemon threads / half-quit state keep
+    # the process alive and still owning the app bus name (blocks tray +
+    # single-instance). Ensure we actually leave.
+    sys.exit(code if isinstance(code, int) else 0)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import struct
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -370,11 +371,16 @@ class SpectreTray:
             self._bus,
             self._bus_name,
             Gio.BusNameOwnerFlags.NONE,
-            lambda *_: self._register_with_watcher(),
+            lambda *_: self._on_name_acquired(),
             None,
         )
         self._ok = True
         self._status = "Active"
+        # Also schedule delayed registers: name-acquired can race the panel
+        # watcher (Cinnamon/xapp) so a pure sync register often no-ops.
+        GLib.timeout_add(100, self._retry_register_with_watcher)
+        GLib.timeout_add(750, self._retry_register_with_watcher)
+        GLib.timeout_add(2000, self._retry_register_with_watcher)
         return True
 
     def stop(self) -> None:
@@ -460,25 +466,68 @@ class SpectreTray:
         except GLib.Error:
             pass
 
-    def _register_with_watcher(self) -> None:
-        if self._bus is None:
-            return
-        for watcher in (_WATCHER_NAME, "org.x.StatusNotifierWatcher"):
+    def _on_name_acquired(self) -> None:
+        self._register_with_watcher()
+
+    def _service_ids(self) -> list[str]:
+        """Candidate RegisterStatusNotifierItem service ids (host-dependent)."""
+        ids = [self._bus_name, f"{self._bus_name}/StatusNotifierItem"]
+        if self._bus is not None:
             try:
-                self._bus.call_sync(
-                    watcher,
-                    _WATCHER_PATH,
-                    _WATCHER_IFACE,
-                    "RegisterStatusNotifierItem",
-                    GLib.Variant("(s)", (self._bus_name,)),
-                    None,
-                    Gio.DBusCallFlags.NONE,
-                    2500,
-                    None,
-                )
-                return
-            except GLib.Error:
-                continue
+                uniq = self._bus.get_unique_name()
+            except Exception:
+                uniq = None
+            if uniq:
+                ids.append(f"{uniq}{self._obj}")
+                ids.append(uniq)
+        # Preserve order, drop dupes
+        out: list[str] = []
+        seen: set[str] = set()
+        for s in ids:
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
+
+    def _register_with_watcher(self) -> bool:
+        """Register with every known SNI watcher. Returns True if any accepted."""
+        if self._bus is None or not self._ok:
+            return False
+        ok_any = False
+        last_err: str | None = None
+        watchers = (_WATCHER_NAME, "org.x.StatusNotifierWatcher")
+        for watcher in watchers:
+            for service in self._service_ids():
+                try:
+                    self._bus.call_sync(
+                        watcher,
+                        _WATCHER_PATH,
+                        _WATCHER_IFACE,
+                        "RegisterStatusNotifierItem",
+                        GLib.Variant("(s)", (service,)),
+                        None,
+                        Gio.DBusCallFlags.NONE,
+                        2500,
+                        None,
+                    )
+                    ok_any = True
+                    # One successful id per watcher is enough; still try the
+                    # other watcher (kde vs xapp names can be distinct).
+                    break
+                except GLib.Error as exc:
+                    last_err = f"{watcher}/{service}: {exc.message}"
+                    continue
+        if not ok_any and last_err:
+            print(
+                f"spectre tray: RegisterStatusNotifierItem failed ({last_err})",
+                file=sys.stderr,
+            )
+        return ok_any
+
+    def _retry_register_with_watcher(self) -> bool:
+        """GLib timeout callback — do not repeat from this source."""
+        self._register_with_watcher()
+        return False
 
     def _on_sni_get(self, *_a) -> GLib.Variant | None:
         name = _a[4] if len(_a) > 4 else _a[-1]

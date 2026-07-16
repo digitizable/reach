@@ -278,25 +278,58 @@ class SettingsPage(Gtk.Box):
         return "CLI installed · idle (not used unless a hop needs it)"
 
     def _on_mullvad_connect(self, *_a) -> None:
+        import threading
+
+        from gi.repository import GLib
+
         from core import mullvad as mv
 
         if self._on_toast:
             self._on_toast("Connecting Mullvad…")
-        st = mv.ensure_connected(timeout_sec=45.0)
-        if hasattr(self, "_mv_status"):
-            self._mv_status.set_subtitle(self._mv_status_subtitle(st))
-        if self._on_toast:
-            self._on_toast(st.summary if st.ready_for_socks_hop else (st.error or st.summary))
+
+        def worker() -> None:
+            st = mv.ensure_connected(timeout_sec=45.0)
+
+            def done() -> bool:
+                if hasattr(self, "_mv_status"):
+                    self._mv_status.set_subtitle(self._mv_status_subtitle(st))
+                if self._on_toast:
+                    self._on_toast(
+                        st.summary
+                        if st.ready_for_socks_hop
+                        else (st.error or st.summary)
+                    )
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(
+            target=worker, name="spectre-mullvad-connect", daemon=True
+        ).start()
 
     def _on_mullvad_disconnect(self, *_a) -> None:
+        import threading
+
+        from gi.repository import GLib
+
         from core import mullvad as mv
 
-        ok, msg = mv.disconnect()
-        st = mv.probe()
-        if hasattr(self, "_mv_status"):
-            self._mv_status.set_subtitle(self._mv_status_subtitle(st))
-        if self._on_toast:
-            self._on_toast(msg if ok else (st.error or msg))
+        def worker() -> None:
+            ok, msg = mv.disconnect()
+            st = mv.probe()
+
+            def done() -> bool:
+                if hasattr(self, "_mv_status"):
+                    self._mv_status.set_subtitle(self._mv_status_subtitle(st))
+                if self._on_toast:
+                    self._on_toast(msg if ok else (st.error or msg))
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(
+            target=worker, name="spectre-mullvad-disconnect", daemon=True
+        ).start()
 
     def _group_network(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()

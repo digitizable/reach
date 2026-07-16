@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from app_config import (
@@ -37,6 +39,8 @@ class SpectreApplication(Adw.Application):
         self._update_check_inflight = False
         self._tray: SpectreTray | None = None
         self._tray_timer: int | None = None
+        self._quitting = False
+        self._force_exit_id: int | None = None
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
@@ -45,6 +49,11 @@ class SpectreApplication(Adw.Application):
         self._setup_tray()
 
     def do_activate(self) -> None:
+        # Remote activations (menu click while already running) and recovery
+        # after a partial quit must re-create the tray if it is missing.
+        if not self._quitting:
+            self._ensure_tray()
+
         windows = self.get_windows()
         if windows:
             win = windows[0]
@@ -93,29 +102,55 @@ class SpectreApplication(Adw.Application):
 
     def _auto_connect_once(self) -> bool:
         """Fire-and-forget connect after first paint if configured."""
-        status, ready = self.services.connect_active()
-        if self._window is not None:
-            if not ready.ok:
-                self._window.toast(f"Auto-connect: {ready.summary}")
-            elif status is not None and status.state == CoreState.CONNECTED:
-                proxy = status.local_proxy
-                self._window.toast(
-                    f"Auto-connect: protected" + (f" · {proxy}" if proxy else "")
-                )
-            elif status is not None and status.state == CoreState.UNAVAILABLE:
-                self._window.toast("Auto-connect: Spectre core is offline")
-            elif status is not None:
-                self._window.toast(f"Auto-connect: {status.message}")
-            self._window.refresh_all()
-        return False  # do not repeat
+        import threading
+
+        def worker() -> None:
+            err: str | None = None
+            status = None
+            ready = None
+            try:
+                status, ready = self.services.connect_active()
+            except Exception as exc:
+                err = str(exc) or repr(exc)
+
+            def done() -> bool:
+                if self._window is not None:
+                    if err is not None:
+                        self._window.toast(f"Auto-connect: {err}")
+                    elif ready is not None and not ready.ok:
+                        self._window.toast(f"Auto-connect: {ready.summary}")
+                    elif status is not None and status.state == CoreState.CONNECTED:
+                        proxy = status.local_proxy
+                        self._window.toast(
+                            "Auto-connect: protected"
+                            + (f" · {proxy}" if proxy else "")
+                        )
+                    elif status is not None and status.state == CoreState.UNAVAILABLE:
+                        self._window.toast("Auto-connect: Spectre core is offline")
+                    elif status is not None:
+                        self._window.toast(f"Auto-connect: {status.message}")
+                    self._window.refresh_all()
+                self._refresh_tray()
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(
+            target=worker, name="spectre-auto-connect", daemon=True
+        ).start()
+        return False  # do not repeat the idle callback
 
     def do_shutdown(self) -> None:
+        self._quitting = True
         self.stop_tray()
         self.services.log("Application shutdown")
         Adw.Application.do_shutdown(self)
 
     def _tray_quit(self) -> None:
         """Quit from the tray menu — drop the panel icon first, then exit."""
+        if self._quitting:
+            return
+        self._quitting = True
         self.services.log("Quit from tray")
         # Remove SNI / bus name before tearing down the app so Cinnamon does
         # not keep a ghost lock after the process is gone or half-quit.
@@ -130,11 +165,41 @@ class SpectreApplication(Adw.Application):
         GLib.timeout_add(50, self._finish_quit)
 
     def _finish_quit(self) -> bool:
-        self.quit()
+        try:
+            self.quit()
+        except Exception:
+            pass
+        # GApplication sometimes logs shutdown but never leaves the main loop
+        # (half-quit zombies keep com.digitizable.spectre-desktop and block the
+        # tray). Force-exit if we are still alive shortly after quit().
+        if self._force_exit_id is None:
+            self._force_exit_id = GLib.timeout_add(400, self._force_exit)
         return False
+
+    def _force_exit(self) -> bool:
+        self._force_exit_id = None
+        try:
+            self.services.log("Force exit after quit (main loop did not leave)")
+        except Exception:
+            pass
+        # Hard exit: release D-Bus name and stop zombie remotes piling up.
+        os._exit(0)
+
+    def _ensure_tray(self) -> None:
+        """Start tray when enabled and not currently available."""
+        if not self.services.config.tray_enabled:
+            return
+        if self._tray is not None and self._tray.available:
+            return
+        # Drop a dead tray object so start() can re-register cleanly.
+        if self._tray is not None:
+            self.stop_tray()
+        self._setup_tray()
 
     def _setup_tray(self) -> None:
         if not self.services.config.tray_enabled:
+            return
+        if self._tray is not None and self._tray.available:
             return
         tray = SpectreTray(
             on_show=self._tray_show_window,
@@ -208,31 +273,92 @@ class SpectreApplication(Adw.Application):
                 pass
 
     def _tray_connect(self) -> None:
-        status, ready = self.services.connect_active()
-        if self._window is not None:
-            if not ready.ok:
-                self._window.toast(ready.summary)
-            elif status is not None and status.state == CoreState.CONNECTED:
-                self._window.toast("Connected")
-            elif status is not None:
-                self._window.toast(status.message or "Connect failed")
-            self._window.refresh_all()
-        self._refresh_tray()
+        # Same as Home Connect: never block the GTK main loop.
+        if getattr(self, "_tray_net_busy", False):
+            return
+        self._tray_net_busy = True
+
+        def worker() -> None:
+            err: str | None = None
+            status = None
+            ready = None
+            try:
+                status, ready = self.services.connect_active()
+            except Exception as exc:
+                err = str(exc) or repr(exc)
+
+            def done() -> bool:
+                self._tray_net_busy = False
+                if self._window is not None:
+                    if err is not None:
+                        self._window.toast(err)
+                    elif ready is not None and not ready.ok:
+                        self._window.toast(ready.summary)
+                    elif status is not None and status.state == CoreState.CONNECTED:
+                        self._window.toast("Connected")
+                    elif status is not None:
+                        self._window.toast(status.message or "Connect failed")
+                    self._window.refresh_all()
+                self._refresh_tray()
+                return False
+
+            GLib.idle_add(done)
+
+        import threading
+
+        threading.Thread(
+            target=worker, name="spectre-tray-connect", daemon=True
+        ).start()
 
     def _tray_disconnect(self) -> None:
-        _status, toast = self.services.disconnect()
-        if self._window is not None:
-            self._window.toast(toast or "Disconnected")
-            self._window.refresh_all()
-        self._refresh_tray()
+        if getattr(self, "_tray_net_busy", False):
+            return
+        self._tray_net_busy = True
+
+        def worker() -> None:
+            err: str | None = None
+            toast = "Disconnected"
+            try:
+                _status, toast = self.services.disconnect()
+            except Exception as exc:
+                err = str(exc) or repr(exc)
+
+            def done() -> bool:
+                self._tray_net_busy = False
+                if self._window is not None:
+                    self._window.toast(err or toast or "Disconnected")
+                    self._window.refresh_all()
+                self._refresh_tray()
+                return False
+
+            GLib.idle_add(done)
+
+        import threading
+
+        threading.Thread(
+            target=worker, name="spectre-tray-disconnect", daemon=True
+        ).start()
 
     def _tray_disconnect_quit(self) -> None:
         """Disconnect the path, then quit the desktop (tray + window)."""
-        try:
-            self.services.disconnect()
-        except Exception:
-            pass
-        self._tray_quit()
+
+        def worker() -> None:
+            try:
+                self.services.disconnect()
+            except Exception:
+                pass
+
+            def done() -> bool:
+                self._tray_quit()
+                return False
+
+            GLib.idle_add(done)
+
+        import threading
+
+        threading.Thread(
+            target=worker, name="spectre-tray-disconnect-quit", daemon=True
+        ).start()
 
     def should_close_to_tray(self) -> bool:
         return bool(

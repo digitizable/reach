@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GLib, Gtk
 
-from core.client import CoreState
+from core.client import CoreState, CoreStatus
 from core.path_explain import explain_live, explain_profile
 from core.path_info import path_info_text
-from core.readiness import profile_uses_mullvad_app_socks
+from core.readiness import Readiness, profile_uses_mullvad_app_socks
 from services import Services
 from widgets.chrome import clear_box, fit_body
 from widgets.path_graph import path_graph
@@ -34,6 +35,7 @@ class HomePage(Gtk.Box):
         self._on_toast = on_toast
         self._on_state_changed = on_state_changed
         self._on_navigate = on_navigate
+        self._action_busy = False
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         body.add_css_class("home-body")
@@ -206,33 +208,83 @@ class HomePage(Gtk.Box):
         dialog.present()
 
     def _on_primary(self, *_a) -> None:
-        st = self._services.core.status()
-        if st.state == CoreState.CONNECTED or st.state == CoreState.CONNECTING:
-            _status, toast = self._services.disconnect()
-            self.refresh()
-            if self._on_toast:
-                self._on_toast(toast or "Disconnected")
-            if self._on_state_changed:
-                self._on_state_changed()
+        # Connect/Disconnect can block for tens of seconds (Mullvad ensure,
+        # live readiness, spectred + nft). Never run that on the GTK thread.
+        if self._action_busy:
             return
+        st = self._services.core.status()
+        disconnecting = st.state in (CoreState.CONNECTED, CoreState.CONNECTING)
 
-        status, ready = self._services.connect_active()
-        self.refresh()
+        self._action_busy = True
+        self._primary.set_sensitive(False)
+        self._primary.set_label("Disconnecting…" if disconnecting else "Connecting…")
+        if self._on_toast:
+            self._on_toast(
+                "Disconnecting…" if disconnecting else "Connecting…"
+            )
+
+        def worker() -> None:
+            err: str | None = None
+            status: CoreStatus | None = None
+            ready: Readiness | None = None
+            toast = ""
+            try:
+                if disconnecting:
+                    status, toast = self._services.disconnect()
+                else:
+                    status, ready = self._services.connect_active()
+            except Exception as exc:
+                err = str(exc) or repr(exc)
+
+            def done() -> bool:
+                self._finish_primary(
+                    disconnecting=disconnecting,
+                    status=status,
+                    ready=ready,
+                    toast=toast,
+                    err=err,
+                )
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(
+            target=worker,
+            name="spectre-home-connect",
+            daemon=True,
+        ).start()
+
+    def _finish_primary(
+        self,
+        *,
+        disconnecting: bool,
+        status: CoreStatus | None,
+        ready: Readiness | None,
+        toast: str,
+        err: str | None,
+    ) -> None:
+        self._action_busy = False
+        self.refresh(force_core=True)
         if self._on_state_changed:
             self._on_state_changed()
 
-        if not ready.ok:
+        if err is not None:
+            if self._on_toast:
+                self._on_toast(err)
+            return
+
+        if disconnecting:
+            if self._on_toast:
+                self._on_toast(toast or "Disconnected")
+            return
+
+        if ready is not None and not ready.ok:
             if self._on_toast:
                 self._on_toast(ready.summary)
             # Guide user to fix bindings / backends / external deps
             low = ready.summary.lower()
             if "no profile" in low:
                 self._nav("profiles")
-            elif "mullvad" in low:
-                # External app — stay on home with clear toast
-                pass
-            elif "tor socks" in low or "tor " in low:
-                pass
             elif "incomplete" in low or "backend" in low or "hop" in low:
                 if "no backend" in low or "unbound" in low:
                     self._nav("profiles")
@@ -240,8 +292,6 @@ class HomePage(Gtk.Box):
                     self._nav("backends")
             elif "profile" in low:
                 self._nav("profiles")
-            elif "setup-killswitch" in low or "nft helper" in low:
-                pass
             return
 
         if status is None:
@@ -259,8 +309,9 @@ class HomePage(Gtk.Box):
                     )
                     self._on_toast(f"Connected · {name}")
                 # Non-blocking product warning (e.g. Mullvad apps-only myth)
-                if ready.warnings:
-                    self._on_toast(ready.warnings[0][:180] + ("…" if len(ready.warnings[0]) > 180 else ""))
+                if ready is not None and ready.warnings:
+                    w0 = ready.warnings[0]
+                    self._on_toast(w0[:180] + ("…" if len(w0) > 180 else ""))
             elif status.state == CoreState.UNAVAILABLE:
                 self._on_toast(status.message or "Spectre core is offline")
             elif status.state == CoreState.DISCONNECTED:
@@ -411,6 +462,11 @@ class HomePage(Gtk.Box):
             if profile is not None
             else "What does this path do?"
         )
+
+        if self._action_busy:
+            # Worker owns the CTA label/sensitivity until finish.
+            self._primary.set_sensitive(False)
+            return
 
         if active or st.state == CoreState.CONNECTING:
             self._primary.set_label("Disconnect")

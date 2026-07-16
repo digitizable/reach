@@ -129,12 +129,36 @@ def disconnect() -> tuple[bool, str]:
 
 
 def ensure_connected(*, timeout_sec: float = 45.0) -> MullvadStatus:
-    """Connect if needed and wait until SOCKS is ready."""
+    """Connect if needed and wait until SOCKS is ready.
+
+    Returns as soon as tunnel SOCKS accepts connections. Already-connected
+    tunnels with a dead SOCKS port use a shorter wait so the UI is not
+    stuck for the full timeout when 10.64.0.1:1080 never opens.
+    """
     st = probe()
     if st.ready_for_socks_hop:
         return st
     if not st.available:
         return st
+
+    # Already up but SOCKS missing → short poll only (no reconnect thrash).
+    if st.connected:
+        wait = min(float(timeout_sec), 8.0)
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            st = probe()
+            if st.ready_for_socks_hop:
+                return st
+            time.sleep(0.35)
+        st = probe()
+        if not st.ready_for_socks_hop:
+            st.error = (
+                f"Mullvad is Connected but SOCKS {st.socks_host}:{st.socks_port} "
+                "is not accepting connections"
+            )
+            st.summary = st.error
+        return st
+
     ok, msg = connect()
     if not ok:
         st = probe()
@@ -149,6 +173,12 @@ def ensure_connected(*, timeout_sec: float = 45.0) -> MullvadStatus:
         time.sleep(0.4)
     st = probe()
     if not st.error:
-        st.error = "Mullvad did not become ready in time"
+        if st.connected and not st.socks_reachable:
+            st.error = (
+                f"Mullvad connected but SOCKS {st.socks_host}:{st.socks_port} "
+                "never became ready"
+            )
+        else:
+            st.error = "Mullvad did not become ready in time"
         st.summary = st.error
     return st

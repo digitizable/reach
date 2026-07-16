@@ -12,9 +12,10 @@ point of view; exclude is still available but usually unnecessary.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 
-from gi.repository import Adw, Gtk, Pango
+from gi.repository import Adw, GLib, Gtk, Pango
 
 from core.apps import RoutedApp
 from core.client import CoreState
@@ -47,6 +48,7 @@ class AppsPage(Gtk.Box):
         self._show_disabled = False
         self._selection_guard = False
         self._tooling_cache = None  # set on refresh
+        self._clearnet_busy = False
 
         add_btn = Gtk.Button()
         add_btn.set_icon_name("list-add-symbolic")
@@ -140,6 +142,37 @@ class AppsPage(Gtk.Box):
         self._clearnet_repair_btn.connect("clicked", self._on_clearnet_repair)
         clearnet_row.append(self._clearnet_repair_btn)
         top.append(clearnet_row)
+
+        # Custom linear bar (not Gtk.ProgressBar — libadwaita/themes often
+        # render that as a circular activity spinner). Hidden until Check/Repair.
+        self._progress_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        self._progress_box.set_hexpand(True)
+        self._progress_box.add_css_class("apps-progress")
+        self._progress_box.set_visible(False)
+        self._progress_label = Gtk.Label(label="", xalign=0)
+        self._progress_label.add_css_class("apps-progress-label")
+        self._progress_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self._progress_box.append(self._progress_label)
+
+        self._progress_trough = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self._progress_trough.add_css_class("apps-progress-trough")
+        self._progress_trough.set_hexpand(True)
+        self._progress_trough.set_size_request(-1, 14)
+        self._progress_trough.set_overflow(Gtk.Overflow.HIDDEN)
+
+        self._progress_fill = Gtk.Box()
+        self._progress_fill.add_css_class("apps-progress-fill")
+        self._progress_fill.set_size_request(0, 14)
+        self._progress_fill.set_halign(Gtk.Align.START)
+        self._progress_fill.set_valign(Gtk.Align.FILL)
+        self._progress_trough.append(self._progress_fill)
+        # Keep fill width in sync when the window resizes.
+        self._progress_trough.connect("notify::width-request", self._on_progress_trough_size)
+        self._progress_trough.connect("map", self._on_progress_trough_size)
+        self._progress_box.append(self._progress_trough)
+        self._progress_fraction = 0.0
+        self._progress_hide_id: int | None = None
+        top.append(self._progress_box)
 
         search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._search = Gtk.SearchEntry()
@@ -243,58 +276,170 @@ class AppsPage(Gtk.Box):
         n = self._services.apps.count_system()
         self._toast(f"Found {n} installed application{'s' if n != 1 else ''}")
 
-    def _on_clearnet_check(self, *_a) -> None:
-        from core.clearnet_health import check_clearnet
+    def _on_progress_trough_size(self, *_a) -> None:
+        self._apply_progress_fill_width()
 
-        self._clearnet_check_btn.set_sensitive(False)
-        self._clearnet_label.set_text("Clearnet: checking…")
-        # Process UI events so the label updates before the probe blocks.
+    def _apply_progress_fill_width(self) -> None:
+        """Set fill width from fraction × trough allocation (true horizontal bar)."""
+        w = 0
         try:
-            from gi.repository import GLib
-
-            while GLib.MainContext.default().pending():
-                GLib.MainContext.default().iteration(False)
+            w = int(self._progress_trough.get_width() or 0)
+        except Exception:
+            w = 0
+        if w <= 1:
+            try:
+                w = max(w, int(self._progress_trough.get_allocated_width() or 0))
+            except Exception:
+                pass
+        if w <= 1:
+            try:
+                alloc = self._progress_trough.get_allocation()
+                w = max(w, int(getattr(alloc, "width", 0) or 0))
+            except Exception:
+                pass
+        if w <= 1:
+            w = 300  # fallback before first allocate
+        if self._progress_fraction <= 0:
+            fill_w = 0
+        else:
+            fill_w = max(3, int(w * self._progress_fraction))
+        self._progress_fill.set_size_request(fill_w, 14)
+        try:
+            self._progress_fill.queue_resize()
+            self._progress_trough.queue_draw()
         except Exception:
             pass
-        try:
-            h = check_clearnet(try_helper=True)
-        except Exception as exc:
-            self._clearnet_label.set_text(f"Clearnet: error · {exc}")
-            self._toast(str(exc))
-            self._clearnet_check_btn.set_sensitive(True)
+
+    def _cancel_progress_hide(self) -> None:
+        if self._progress_hide_id is not None:
+            try:
+                GLib.source_remove(self._progress_hide_id)
+            except Exception:
+                pass
+            self._progress_hide_id = None
+
+    def _hide_progress_bar(self) -> bool:
+        """GLib timeout: collapse the bar after a finished run."""
+        self._progress_hide_id = None
+        if self._clearnet_busy:
+            return False
+        self._progress_fraction = 0.0
+        self._progress_label.set_text("")
+        self._apply_progress_fill_width()
+        self._progress_box.set_visible(False)
+        return False
+
+    def _set_progress(
+        self,
+        fraction: float,
+        *,
+        text: str = "",
+        busy: bool | None = None,
+    ) -> None:
+        """Linear horizontal progress (0..1). Visible only while active/done flash."""
+        if busy is not None:
+            self._clearnet_busy = busy
+            self._clearnet_check_btn.set_sensitive(not busy)
+            if busy:
+                self._clearnet_repair_btn.set_sensitive(False)
+                self._cancel_progress_hide()
+                self._progress_box.set_visible(True)
+        self._progress_fraction = max(0.0, min(1.0, float(fraction)))
+        if text:
+            self._progress_label.set_text(text)
+        self._apply_progress_fill_width()
+        # After finish (or fail), flash the final state briefly then hide.
+        if busy is False:
+            self._cancel_progress_hide()
+            delay_ms = 700 if self._progress_fraction >= 1.0 else 400
+            self._progress_hide_id = GLib.timeout_add(delay_ms, self._hide_progress_bar)
+
+    def _progress_from_worker(self, fraction: float, label: str) -> None:
+        """Marshal progress updates from a background thread to GTK."""
+
+        def _apply() -> bool:
+            self._set_progress(fraction, text=label, busy=True)
+            return False
+
+        GLib.idle_add(_apply)
+
+    def _on_clearnet_check(self, *_a) -> None:
+        if self._clearnet_busy:
             return
-        self._clearnet_label.set_text(f"Clearnet: {h.summary}")
-        self._clearnet_label.set_tooltip_text(
-            "\n".join(h.detail_lines) if h.detail_lines else h.summary
-        )
-        self._clearnet_repair_btn.set_sensitive(h.can_repair)
-        self._clearnet_check_btn.set_sensitive(True)
-        self._toast(h.summary)
+        self._clearnet_label.set_text("Clearnet: checking…")
+        self._set_progress(0.0, text="Starting…", busy=True)
+
+        def worker() -> None:
+            from core.clearnet_health import check_clearnet
+
+            err: str | None = None
+            h = None
+            try:
+                h = check_clearnet(
+                    try_helper=True,
+                    on_progress=self._progress_from_worker,
+                )
+            except Exception as exc:
+                err = str(exc) or repr(exc)
+
+            def done() -> bool:
+                if err is not None:
+                    self._set_progress(0.0, text="Failed", busy=False)
+                    self._clearnet_label.set_text(f"Clearnet: error · {err}")
+                    from core.clearnet_health import find_clearnet_netns
+
+                    self._clearnet_repair_btn.set_sensitive(
+                        bool(find_clearnet_netns())
+                    )
+                    self._toast(err)
+                    return False
+                assert h is not None
+                self._set_progress(1.0, text="Done", busy=False)
+                self._clearnet_label.set_text(f"Clearnet: {h.summary}")
+                self._clearnet_label.set_tooltip_text(
+                    "\n".join(h.detail_lines) if h.detail_lines else h.summary
+                )
+                self._clearnet_repair_btn.set_sensitive(h.can_repair)
+                self._toast(h.summary)
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(target=worker, name="spectre-clearnet-check", daemon=True).start()
 
     def _on_clearnet_repair(self, *_a) -> None:
-        from core.clearnet_health import repair_clearnet
-
-        self._clearnet_repair_btn.set_sensitive(False)
+        if self._clearnet_busy:
+            return
         self._clearnet_label.set_text("Clearnet: repairing…")
-        try:
-            from gi.repository import GLib
+        self._set_progress(0.0, text="Starting repair…", busy=True)
 
-            while GLib.MainContext.default().pending():
-                GLib.MainContext.default().iteration(False)
-        except Exception:
-            pass
-        try:
-            ok, msg = repair_clearnet()
-        except Exception as exc:
-            ok, msg = False, str(exc)
-        self._clearnet_label.set_text(f"Clearnet: {msg}")
-        self._toast(msg)
-        self._clearnet_repair_btn.set_sensitive(True)
-        # Refresh status line after repair
-        try:
-            self._on_clearnet_check()
-        except Exception:
-            pass
+        def worker() -> None:
+            from core.clearnet_health import repair_clearnet
+
+            err: str | None = None
+            msg = ""
+            try:
+                _ok, msg = repair_clearnet(on_progress=self._progress_from_worker)
+            except Exception as exc:
+                err = str(exc) or repr(exc)
+
+            def done() -> bool:
+                if err is not None:
+                    self._set_progress(0.0, text="Failed", busy=False)
+                    self._clearnet_label.set_text(f"Clearnet: error · {err}")
+                    self._clearnet_repair_btn.set_sensitive(True)
+                    self._toast(err)
+                    return False
+                self._set_progress(1.0, text="Done", busy=False)
+                self._clearnet_label.set_text(f"Clearnet: {msg}")
+                self._toast(msg)
+                # Follow with a full check (also linear progress)
+                self._on_clearnet_check()
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(target=worker, name="spectre-clearnet-repair", daemon=True).start()
 
     def _routing_mode(self) -> str:
         mode = (self._services.config.routing_mode or "system").strip().lower()

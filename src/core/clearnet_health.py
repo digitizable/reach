@@ -2,6 +2,9 @@
 
 Never runs teardown. May call ``sudo -n clearnet-netns check|setup`` when
 passwordless sudo is available; otherwise uses read-only host/ns checks.
+
+``on_progress(fraction, label)`` is optional and may be called from a worker
+thread — the UI must marshal to the main loop.
 """
 
 from __future__ import annotations
@@ -10,9 +13,11 @@ import os
 import re
 import shutil
 import subprocess
-import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+ProgressCb = Callable[[float, str], None]
 
 
 @dataclass
@@ -49,15 +54,34 @@ def find_clearnet_netns() -> str | None:
     )
 
 
-def _sudo_n(*args: str, timeout: float = 12.0) -> subprocess.CompletedProcess[str]:
+def _report(on_progress: ProgressCb | None, fraction: float, label: str) -> None:
+    if on_progress is None:
+        return
+    try:
+        on_progress(max(0.0, min(1.0, fraction)), label)
+    except Exception:
+        pass
+
+
+def _sudo_n(*args: str, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
+    """Run with sudo -n; never hang the UI (caller should be off the main thread)."""
     sudo = shutil.which("sudo") or "sudo"
-    return subprocess.run(  # noqa: S603
-        [sudo, "-n", *args],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        return subprocess.run(  # noqa: S603
+            [sudo, "-n", *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            start_new_session=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            args=[sudo, "-n", *args],
+            returncode=124,
+            stdout=(exc.stdout or "") if isinstance(exc.stdout, str) else "",
+            stderr="timeout",
+        )
 
 
 def _parse_check_output(text: str) -> ClearnetHealth:
@@ -81,7 +105,7 @@ def _parse_check_output(text: str) -> ClearnetHealth:
     if data.get("inet_ping_ms") not in (None, "", "FAIL", "n/a", "ok"):
         try:
             ping = float(re.sub(r"[^0-9.]", "", data["inet_ping_ms"]) or "nan")
-            if ping != ping:  # NaN
+            if ping != ping:
                 ping = None
         except ValueError:
             ping = None
@@ -116,31 +140,29 @@ def _parse_check_output(text: str) -> ClearnetHealth:
     )
 
 
-def _fallback_probe() -> ClearnetHealth:
-    """Read-only probe without clearnet-netns helper."""
+def _fallback_probe(on_progress: ProgressCb | None = None) -> ClearnetHealth:
+    """Read-only / in-ns probe without relying on a full helper check."""
     ns = (os.environ.get("CLEARNET_NS") or "clearnet").strip()
     lines: list[str] = []
     ok = True
-    netns_ok = any(
-        (Path(b) / ns).exists() for b in ("/run/netns", "/var/run/netns")
-    )
+    _report(on_progress, 0.1, "Looking for clearnet netns…")
+
+    netns_ok = any((Path(b) / ns).exists() for b in ("/run/netns", "/var/run/netns"))
     lines.append(f"netns: {'present' if netns_ok else 'missing'}")
     if not netns_ok:
         ok = False
 
+    _report(on_progress, 0.25, "Reading DNS config…")
     resolv = Path(f"/etc/netns/{ns}/resolv.conf")
     if resolv.is_file():
         try:
             text = resolv.read_text(encoding="utf-8", errors="replace")
-            lines.append("resolv: " + " ".join(
-                ln.split()[-1] for ln in text.splitlines() if ln.startswith("nameserver")
-            ))
-            # Prefer public DNS first
             nss = [
                 ln.split()[-1]
                 for ln in text.splitlines()
                 if ln.startswith("nameserver")
             ]
+            lines.append("resolv: " + " ".join(nss))
             if nss and nss[0] not in ("1.1.1.1", "9.9.9.9", "8.8.8.8"):
                 lines.append("note: first DNS is not public — may feel slow")
         except OSError:
@@ -149,7 +171,6 @@ def _fallback_probe() -> ClearnetHealth:
         lines.append("resolv: missing")
         ok = False
 
-    # If this process is inside clearnet, can ping/curl directly
     in_ns = False
     try:
         r = subprocess.run(  # noqa: S603
@@ -166,6 +187,7 @@ def _fallback_probe() -> ClearnetHealth:
     ping_ms = None
     sample = None
     if in_ns:
+        _report(on_progress, 0.45, "Pinging 1.1.1.1…")
         try:
             r = subprocess.run(  # noqa: S603
                 ["ping", "-c", "1", "-W", "2", "1.1.1.1"],
@@ -184,6 +206,8 @@ def _fallback_probe() -> ClearnetHealth:
         except (OSError, subprocess.TimeoutExpired):
             lines.append("inet_ping_ms: FAIL")
             ok = False
+
+        _report(on_progress, 0.7, "Speed sample…")
         try:
             r = subprocess.run(  # noqa: S603
                 [
@@ -195,23 +219,30 @@ def _fallback_probe() -> ClearnetHealth:
                     "-w",
                     "%{speed_download}",
                     "--max-time",
-                    "8",
-                    "https://speed.cloudflare.com/__down?bytes=2000000",
+                    "4",
+                    "https://speed.cloudflare.com/__down?bytes=1000000",
                 ],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=6,
                 check=False,
+                start_new_session=True,
             )
-            if r.returncode == 0 and r.stdout.strip().replace(".", "", 1).isdigit():
-                bps = float(r.stdout.strip())
+            out = (r.stdout or "").strip()
+            if r.returncode == 0 and out.replace(".", "", 1).isdigit():
+                bps = float(out)
                 sample = (bps * 8) / 1_000_000
                 lines.append(f"sample_mbps: {sample:.0f}")
+            else:
+                lines.append("sample_mbps: n/a")
         except (OSError, subprocess.TimeoutExpired, ValueError):
             lines.append("sample_mbps: n/a")
     else:
-        lines.append("note: run Check as user with passwordless clearnet-netns for full probe")
+        lines.append(
+            "note: full probe needs passwordless clearnet-netns (spectre setup-clearnet)"
+        )
 
+    _report(on_progress, 0.95, "Finishing…")
     bits = ["health " + ("OK" if ok else "DEGRADED")]
     if ping_ms is not None:
         bits.append(f"ping {ping_ms:.0f} ms")
@@ -227,47 +258,82 @@ def _fallback_probe() -> ClearnetHealth:
     )
 
 
-def check_clearnet(*, try_helper: bool = True) -> ClearnetHealth:
-    """Probe clearnet netns health + short speed sample."""
+def check_clearnet(
+    *,
+    try_helper: bool = True,
+    on_progress: ProgressCb | None = None,
+) -> ClearnetHealth:
+    """Probe clearnet netns health + short speed sample (worker-thread safe)."""
+    _report(on_progress, 0.05, "Starting clearnet check…")
     helper = find_clearnet_netns() if try_helper else None
     if helper:
+        _report(on_progress, 0.2, "Running clearnet-netns check…")
         try:
-            r = _sudo_n(helper, "check", timeout=20.0)
-            if r.returncode in (0, 1) and (r.stdout or "").strip():
-                h = _parse_check_output(r.stdout)
+            r = _sudo_n(helper, "check", timeout=12.0)
+            out = (r.stdout or "").strip()
+            err = (r.stderr or "").strip()
+            if r.returncode in (0, 1) and out and "health:" in out.lower():
+                _report(on_progress, 0.9, "Parsing results…")
+                h = _parse_check_output(out)
                 h.can_repair = True
                 if r.returncode != 0:
                     h.ok = False
+                _report(on_progress, 1.0, "Done")
                 return h
-            # sudo failed or empty — fall back
-            if r.stderr and "password" in (r.stderr or "").lower():
-                fb = _fallback_probe()
+            if r.returncode == 124 or err == "timeout":
+                fb = _fallback_probe(on_progress)
+                fb.detail_lines.append("helper check timed out — used local probe")
+                fb.can_repair = True
+                _report(on_progress, 1.0, "Done")
+                return fb
+            if "password" in err.lower() or "a password is required" in err.lower():
+                fb = _fallback_probe(on_progress)
                 fb.detail_lines.append("sudo: password required for full check")
                 fb.can_repair = False
+                _report(on_progress, 1.0, "Done")
+                return fb
+            if out or err:
+                fb = _fallback_probe(on_progress)
+                fb.detail_lines.append(f"helper: {(err or out)[:120]}")
+                fb.can_repair = True
+                _report(on_progress, 1.0, "Done")
                 return fb
         except (OSError, subprocess.TimeoutExpired) as exc:
-            fb = _fallback_probe()
+            fb = _fallback_probe(on_progress)
             fb.detail_lines.append(f"helper error: {exc}")
+            _report(on_progress, 1.0, "Done")
             return fb
-    return _fallback_probe()
+    h = _fallback_probe(on_progress)
+    _report(on_progress, 1.0, "Done")
+    return h
 
 
-def repair_clearnet() -> tuple[bool, str]:
+def repair_clearnet(on_progress: ProgressCb | None = None) -> tuple[bool, str]:
     """Refresh nft + DNS via clearnet-netns setup (no teardown when healthy)."""
+    _report(on_progress, 0.1, "Looking for clearnet-netns…")
     helper = find_clearnet_netns()
     if not helper:
+        _report(on_progress, 1.0, "Failed")
         return False, "clearnet-netns not found — run: spectre setup-clearnet"
+    _report(on_progress, 0.35, "Running clearnet-netns setup…")
     try:
-        r = _sudo_n(helper, "setup", timeout=45.0)
+        r = _sudo_n(helper, "setup", timeout=30.0)
     except (OSError, subprocess.TimeoutExpired) as exc:
+        _report(on_progress, 1.0, "Failed")
         return False, f"setup failed: {exc}"
+    if r.returncode == 124:
+        _report(on_progress, 1.0, "Failed")
+        return False, "setup timed out"
     if r.returncode != 0:
         err = (r.stderr or r.stdout or "setup failed").strip()
         if "password" in err.lower():
+            _report(on_progress, 1.0, "Failed")
             return False, "Need passwordless sudo for clearnet-netns (spectre setup-clearnet)"
+        _report(on_progress, 1.0, "Failed")
         return False, err[:240]
-    # Re-check
-    h = check_clearnet(try_helper=True)
+    _report(on_progress, 0.7, "Re-checking clearnet…")
+    h = check_clearnet(try_helper=True, on_progress=on_progress)
+    _report(on_progress, 1.0, "Done")
     if h.ok:
         return True, f"Clearnet repaired · {h.summary}"
     return True, f"Setup ran · {h.summary}"
