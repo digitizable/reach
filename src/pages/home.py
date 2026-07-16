@@ -109,18 +109,24 @@ class HomePage(Gtk.Box):
         if not ready.ok:
             if self._on_toast:
                 self._on_toast(ready.summary)
-            # Guide user to fix bindings / backends
+            # Guide user to fix bindings / backends / external deps
             low = ready.summary.lower()
             if "no profile" in low:
                 self._nav("profiles")
+            elif "mullvad" in low:
+                # External app — stay on home with clear toast
+                pass
+            elif "tor socks" in low or "tor " in low:
+                pass
             elif "incomplete" in low or "backend" in low or "hop" in low:
-                # Incomplete backends → Backends; unbound → Profiles editor
                 if "no backend" in low or "unbound" in low:
                     self._nav("profiles")
                 else:
                     self._nav("backends")
             elif "profile" in low:
                 self._nav("profiles")
+            elif "setup-killswitch" in low or "nft helper" in low:
+                pass
             return
 
         if status is None:
@@ -137,6 +143,9 @@ class HomePage(Gtk.Box):
                         else "profile"
                     )
                     self._on_toast(f"Connected · {name}")
+                # Non-blocking product warning (e.g. Mullvad apps-only myth)
+                if ready.warnings:
+                    self._on_toast(ready.warnings[0][:180] + ("…" if len(ready.warnings[0]) > 180 else ""))
             elif status.state == CoreState.UNAVAILABLE:
                 self._on_toast(status.message or "Spectre core is offline")
             elif status.state == CoreState.DISCONNECTED:
@@ -148,8 +157,10 @@ class HomePage(Gtk.Box):
         st = self._services.core.status()
         kind = kind_from_core(st.state)
         profile = self._services.active_profile()
-        ready = self._services.readiness()
+        # Live probes when idle so Connect doesn't surprise the user;
+        # skip heavy probes while already connected (path owns the network).
         active = st.state == CoreState.CONNECTED
+        ready = self._services.readiness(live=not active)
 
         titles = {
             CoreState.UNAVAILABLE: "Core offline",
@@ -167,6 +178,22 @@ class HomePage(Gtk.Box):
                 detail = f"Path up · SOCKS {st.local_proxy}"
             else:
                 detail = st.message or "Traffic is on the active path."
+            # Routing mode / kill switch status from core
+            if getattr(st, "routing_active", None):
+                detail += " · system routing"
+            elif (getattr(st, "routing_mode", None) or "").lower() == "apps":
+                detail += " · apps only"
+            if st.kill_switch_active:
+                detail += " · kill switch"
+            elif st.kill_switch is True and st.kill_switch_active is False:
+                if st.kill_switch_detail and "apps-only" not in (
+                    st.kill_switch_detail or ""
+                ):
+                    detail += f" · KS off ({st.kill_switch_detail})"
+            if ready.warnings:
+                # Keep short on the home line; full text is toasted on connect
+                if "Mullvad" in ready.warnings[0]:
+                    detail += " · Mullvad full-tunnel"
             if whonix and whonix_role == "workstation":
                 detail += " · Whonix"
         elif st.state == CoreState.DISCONNECTED and st.message and st.message not in (

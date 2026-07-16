@@ -35,6 +35,7 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._profiles: ProfilesPage | None = None
         self._backends: BackendsPage | None = None
         self._apps: AppsPage | None = None
+        self._settings: SettingsPage | None = None
         self._window_title: Adw.WindowTitle | None = None
         self._ready = False
 
@@ -81,6 +82,7 @@ class SpectreWindow(Adw.ApplicationWindow):
 
     def _menu_model(self) -> Gio.Menu:
         menu = Gio.Menu()
+        menu.append("Check for updates…", "app.check-updates")
         menu.append("About", "app.about")
         menu.append("Quit", "app.quit")
         return menu
@@ -210,15 +212,28 @@ class SpectreWindow(Adw.ApplicationWindow):
             on_toast=self.toast,
             on_navigate=self._navigate,
         )
-        settings = SettingsPage(self._services, on_toast=self.toast)
+        app = self.get_application()
+        check_cb = None
+        if app is not None and hasattr(app, "start_update_check"):
+            check_cb = lambda: app.start_update_check(manual=True)  # noqa: E731
+        self._settings = SettingsPage(
+            self._services,
+            parent_window=self,
+            on_toast=self.toast,
+            on_check_updates=check_cb,
+        )
 
         stack.add_named(self._home, "home")
         stack.add_named(self._profiles, "profiles")
         stack.add_named(self._backends, "backends")
         stack.add_named(self._apps, "apps")
-        stack.add_named(settings, "settings")
+        stack.add_named(self._settings, "settings")
         self._page_stack = stack
         return stack
+
+    def refresh_update_settings(self) -> None:
+        if self._settings is not None:
+            self._settings.refresh_update_meta()
 
     def refresh_all(self) -> None:
         """Reload every page that caches data (used after external state changes)."""
@@ -230,6 +245,7 @@ class SpectreWindow(Adw.ApplicationWindow):
             self._backends.reload()
         if self._apps is not None:
             self._apps.reload()
+        self.refresh_update_settings()
         self._sync_chrome()
 
     def _on_data_changed(self) -> None:

@@ -32,6 +32,12 @@ class CoreStatus:
     local_proxy: str = ""
     dns_ok: bool | None = None
     leak_guard: bool | None = None
+    kill_switch: bool | None = None
+    kill_switch_active: bool | None = None
+    kill_switch_detail: str = ""
+    routing_mode: str = ""
+    routing_active: bool | None = None
+    routing_detail: str = ""
     last_payload: dict[str, Any] | None = None
     environment: dict[str, Any] | None = None
 
@@ -108,6 +114,9 @@ def _status_from_json(
     data: dict[str, Any], *, last_payload: dict[str, Any] | None
 ) -> CoreStatus:
     env = data.get("environment")
+    ks = data.get("kill_switch")
+    ksa = data.get("kill_switch_active")
+    ra = data.get("routing_active")
     return CoreStatus(
         state=_parse_state(str(data.get("state") or "")),
         message=str(data.get("message") or ""),
@@ -118,6 +127,12 @@ def _status_from_json(
         local_proxy=str(data.get("local_proxy") or ""),
         dns_ok=data.get("dns_ok"),
         leak_guard=data.get("leak_guard"),
+        kill_switch=ks if isinstance(ks, bool) else None,
+        kill_switch_active=ksa if isinstance(ksa, bool) else None,
+        kill_switch_detail=str(data.get("kill_switch_detail") or ""),
+        routing_mode=str(data.get("routing_mode") or ""),
+        routing_active=ra if isinstance(ra, bool) else None,
+        routing_detail=str(data.get("routing_detail") or ""),
         last_payload=last_payload,
         environment=env if isinstance(env, dict) else None,
     )

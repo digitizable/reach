@@ -7,8 +7,13 @@ from pathlib import Path
 
 APPLICATION_ID = "com.digitizable.spectre-desktop"
 APPLICATION_NAME = "Spectre Desktop"
-APPLICATION_VERSION = "0.1.0"
+APPLICATION_VERSION = "0.2.0"
 APPLICATION_ICON = APPLICATION_ID
+
+# Upstream for update checks (GitHub Releases)
+GITHUB_OWNER = "digitizable"
+GITHUB_REPO = "spectre-desktop"
+GITHUB_URL = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}"
 
 
 def src_dir() -> Path:

@@ -8,6 +8,10 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
+## Status (0.2.0)
+
+Routing modes (system / apps-only), connect preflight (Mullvad/Tor/proxy/tools), auto-discovered Apps launcher, GitHub update checks, and policy handoff to spectred for kill switch + system routing.
+
 ## What it is
 
 Spectre Desktop is a **thin operator shell**, not the tunnel itself:
@@ -17,7 +21,7 @@ Spectre Desktop is a **thin operator shell**, not the tunnel itself:
 | Backend catalog (VPN, REALITY, Tor, Proxy drafts) | Desktop |
 | Profiles (ordered hops + which backend each hop uses) | Desktop |
 | Readiness (“can we hand this to the core?”) | Desktop |
-| Settings / policy hints (kill switch, DNS, …) | Desktop (stored; core enforces later) |
+| Settings / policy (routing mode, kill switch, DNS, …) | Desktop stores; core enforces system routing + kill switch when connected |
 | Live path, SOCKS entry, adapter processes | **spectred** core |
 
 That split answers “which VPN do I use?”: define it under **Backends**, bind it on a hop under **Profiles**, then **Connect**.
@@ -30,17 +34,52 @@ That split answers “which VPN do I use?”: define it under **Backends**, bind
 | **Profiles** | Path recipes; hop order; bind each hop to a backend |
 | **Backends** | Concrete adapters (fill provider/config/UUID/etc.) |
 | **Apps** | Applications that launch through the active path |
-| **Settings** | Core socket, API token, network/privacy policy hints, logging |
+| **Settings** | Core socket, API token, network/privacy policy, **updates** (GitHub), logging |
 
 ### App routing
 
-Spectre does **not** force every process on the machine into the tunnel. Apps you register under **Apps** are launched through the active path:
+**Settings → Routing mode** chooses how traffic uses the path:
 
-1. Connect a profile (local SOCKS comes up)
-2. **Apps** → add a command or `.desktop` file
-3. **Launch** — starts the app with `ALL_PROXY` / `HTTP(S)_PROXY` → Spectre SOCKS
+| Mode | Behavior |
+|------|----------|
+| **Entire system** (default) | Core redirects machine TCP/DNS through the path after Connect |
+| **Selected apps only** | Only **Apps** launcher / SOCKS clients use Spectre; rest of the OS stays clearnet *from Spectre’s point of view* |
 
-Optional **proxychains** mode (needs `proxychains-ng`) for apps that ignore proxy environment variables.
+Under **Apps**, installed desktop applications are **detected automatically**. **Launch** sets `ALL_PROXY` / `HTTP(S)_PROXY` → Spectre SOCKS. Optional **proxychains** mode needs `proxychains-ng`.
+
+### Mullvad and “selected apps only”
+
+The **Mullvad app does not support include-only split tunneling** (only *exclude* apps from the VPN). Mullvad’s FAQ states they do not plan inverse split tunneling — VPN should be default, not exception.
+
+So:
+
+- **Mullvad app Connected** ⇒ the **whole system** is already on Mullvad (unless you exclude apps *out* of the tunnel).
+- Spectre’s **Mullvad SOCKS** hop (`10.64.0.1:1080`) only exists while that tunnel is up — it cannot offer “only Firefox through Mullvad, everything else clearnet.”
+- Spectre **apps-only** mode does not undo Mullvad’s full tunnel; it only skips Spectre’s own system redirect.
+
+**True selected-apps-through-Mullvad + rest clearnet:**
+
+1. Disconnect the **Mullvad app**
+2. Add a **VPN** backend with a Mullvad **WireGuard `.conf`**
+3. Spectre **Routing mode → Selected apps only**
+4. Connect, then **Apps → Launch** the apps you want on Mullvad
+
+The home screen warns when a profile uses Mullvad app SOCKS in a way that conflicts with apps-only expectations.
+
+### Connect preflight
+
+**Connect** runs live checks before talking to the core (so the UI fails fast with a clear toast instead of a hung/half-applied path):
+
+| Hop / policy | Blocked when |
+|--------------|----------------|
+| **Mullvad SOCKS** (`10.64.0.1`) | Mullvad CLI reports Disconnected, or tunnel SOCKS is closed |
+| **Tor** | SOCKS host:port not accepting connections |
+| **Proxy** | Host:port unreachable |
+| **WireGuard VPN** | `.conf` missing/unreadable, or `wg-quick` not installed |
+| **REALITY** | Incomplete fields, `xray` missing, or server name won’t resolve |
+| **System routing** | `spectre-nft` helper not set up (`spectre setup-killswitch`) |
+
+Structural checks (backend bound, enabled, complete) always run; list “ready” tags stay structural-only so scrolling Profiles stays snappy.
 
 CLI:
 
@@ -83,7 +122,7 @@ spectre health
 | Socket | `$XDG_RUNTIME_DIR/spectre/spectre.sock` |
 | Override | Settings → Socket path, or `SPECTRE_SOCKET` |
 
-See the core README and [API docs](https://github.com/digitizable/spectre/blob/main/docs/API.md) for hop behavior and limitations (local SOCKS only; no system-wide kill switch yet).
+See the core README and [API docs](https://github.com/digitizable/spectre/blob/main/docs/API.md) for hop behavior. Apps use the local SOCKS entry; with **kill switch** on, spectred installs nftables rules so clearnet cannot bypass the path (needs `nft` privileges once — `spectre` repo `scripts/setup-killswitch-privs.sh`).
 
 ## Whonix
 
@@ -130,8 +169,12 @@ python src/main.py
 |------|----------|
 | `~/.local/share/spectre-desktop/backends.json` | Backend catalog |
 | `~/.local/share/spectre-desktop/profiles.json` | Profiles + hop bindings |
-| `~/.local/share/spectre-desktop/apps.json` | Apps routed through Spectre |
-| `~/.config/spectre-desktop/config.json` | Settings + last active profile |
+| `~/.local/share/spectre-desktop/apps.json` | Custom apps + mode/hide overrides for discovered apps |
+| `~/.config/spectre-desktop/config.json` | Settings + last active profile + update-check prefs |
+
+### Updates
+
+Settings → **Updates** (on by default) polls [GitHub Releases](https://github.com/digitizable/spectre-desktop/releases) on a schedule (default every 24 hours). There is no auto-install — you get a dialog with a link to the release page. Manual check: menu **Check for updates…** or Settings → **Check**.
 | `~/.local/share/spectre-desktop/desktop.log` | Optional desktop log |
 
 Uninstall: `./uninstall.sh`.

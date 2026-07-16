@@ -6,8 +6,10 @@ from collections.abc import Callable
 
 from gi.repository import Adw, Gtk
 
+from app_config import APPLICATION_VERSION, GITHUB_URL
 from core.client import default_socket_path
-from services import AppConfig, Services
+from core.updates import DEFAULT_CHECK_INTERVAL_HOURS
+from services import Services
 from widgets.chrome import page_header, scroll_body
 
 
@@ -16,14 +18,18 @@ class SettingsPage(Gtk.Box):
         self,
         services: Services,
         *,
+        parent_window: Gtk.Window | None = None,
         on_toast: Callable[[str], None] | None = None,
+        on_check_updates: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("page")
         self.set_hexpand(True)
         self.set_vexpand(True)
         self._services = services
+        self._parent_window = parent_window
         self._on_toast = on_toast
+        self._on_check_updates = on_check_updates
         self._cfg = services.config
 
         save = Gtk.Button(label="Save")
@@ -39,6 +45,7 @@ class SettingsPage(Gtk.Box):
         body.append(self._group_session())
         body.append(self._group_network())
         body.append(self._group_privacy())
+        body.append(self._group_updates())
         body.append(self._group_logging())
         body.append(self._group_advanced())
 
@@ -126,14 +133,103 @@ class SettingsPage(Gtk.Box):
         g.add(self._notify)
         return g
 
+    def _group_updates(self) -> Adw.PreferencesGroup:
+        g = Adw.PreferencesGroup()
+        g.set_title("Updates")
+        g.set_description(
+            f"Check GitHub Releases for Spectre Desktop "
+            f"({GITHUB_URL}). Current version: {APPLICATION_VERSION}"
+        )
+
+        self._check_updates = Adw.SwitchRow(
+            title="Check for updates automatically",
+            subtitle="Query GitHub in the background on a schedule (no auto-install)",
+        )
+        self._check_updates.set_active(self._cfg.check_for_updates)
+        g.add(self._check_updates)
+
+        interval = self._cfg.update_check_interval_hours or DEFAULT_CHECK_INTERVAL_HOURS
+        self._update_interval = Adw.SpinRow(
+            title="Check interval",
+            subtitle="Hours between automatic checks",
+            adjustment=Gtk.Adjustment(
+                value=max(1, int(interval)),
+                lower=1,
+                upper=168,
+                step_increment=1,
+                page_increment=24,
+            ),
+        )
+        g.add(self._update_interval)
+
+        # Action row: Check now
+        check_row = Adw.ActionRow(title="Check now")
+        last = (self._cfg.last_update_check or "").strip()
+        check_row.set_subtitle(
+            f"Last check: {last}" if last else "Not checked yet this install"
+        )
+        self._last_check_row = check_row
+        btn = Gtk.Button(label="Check")
+        btn.set_valign(Gtk.Align.CENTER)
+        btn.add_css_class("suggested-action")
+        btn.connect("clicked", self._on_check_now)
+        check_row.add_suffix(btn)
+        check_row.set_activatable_widget(btn)
+        g.add(check_row)
+        return g
+
+    def _on_check_now(self, *_a) -> None:
+        # Persist toggle/interval first so the checker sees current prefs
+        self._apply_update_fields()
+        self._services.save_config()
+        if self._on_check_updates:
+            self._on_check_updates()
+        elif self._on_toast:
+            self._on_toast("Update check unavailable")
+
+    def refresh_update_meta(self) -> None:
+        """Refresh last-check subtitle after an update check completes."""
+        last = (self._services.config.last_update_check or "").strip()
+        if hasattr(self, "_last_check_row"):
+            self._last_check_row.set_subtitle(
+                f"Last check: {last}" if last else "Not checked yet this install"
+            )
+
+    def _apply_update_fields(self) -> None:
+        cfg = self._services.config
+        cfg.check_for_updates = self._check_updates.get_active()
+        cfg.update_check_interval_hours = max(
+            1, int(self._update_interval.get_value())
+        )
+
     def _group_network(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Network")
-        g.set_description("Tunnel policy enforced by Spectre core when connected")
+        g.set_description(
+            "How traffic uses the path when connected. "
+            "If the network freezes, run: spectre unlock"
+        )
+
+        self._routing = Adw.ComboRow(title="Routing mode")
+        self._routing.set_model(
+            Gtk.StringList.new(
+                [
+                    "Entire system (default)",
+                    "Selected apps only",
+                ]
+            )
+        )
+        mode = (self._cfg.routing_mode or "system").lower()
+        self._routing.set_selected(1 if mode == "apps" else 0)
+        self._routing.set_subtitle(
+            "System: whole machine via Spectre. Apps-only: only Apps/SOCKS. "
+            "Note: Mullvad app cannot include-only apps (exclude-only split tunnel)."
+        )
+        g.add(self._routing)
 
         self._kill = Adw.SwitchRow(
             title="Kill switch",
-            subtitle="Block traffic that would bypass the active path",
+            subtitle="System mode only: block clearnet bypass (needs spectre setup-killswitch once)",
         )
         self._kill.set_active(self._cfg.kill_switch)
         g.add(self._kill)
@@ -250,6 +346,9 @@ class SettingsPage(Gtk.Box):
         cfg.auto_connect = self._auto_connect.get_active()
         cfg.start_minimized = self._start_min.get_active()
         cfg.notify_on_disconnect = self._notify.get_active()
+        cfg.routing_mode = (
+            "apps" if int(self._routing.get_selected()) == 1 else "system"
+        )
         cfg.kill_switch = self._kill.get_active()
         cfg.block_ipv6 = self._ipv6.get_active()
         cfg.allow_lan = self._lan.get_active()
@@ -262,6 +361,7 @@ class SettingsPage(Gtk.Box):
         log_idx = int(self._log_level.get_selected())
         cfg.log_level = ("error", "warn", "info", "debug")[max(0, min(3, log_idx))]
         cfg.log_to_file = self._log_file.get_active()
+        self._apply_update_fields()
         cfg.bind_address = self._bind.get_text().strip() or "127.0.0.1"
         cfg.mtu = int(self._mtu.get_value())
 

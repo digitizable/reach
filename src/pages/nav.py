@@ -35,7 +35,7 @@ NAV_ITEMS: tuple[NavItem, ...] = (
     NavItem(
         id="apps",
         title="Apps",
-        icon_name="application-x-executable-symbolic",
+        icon_name="view-app-grid-symbolic",
         tooltip="Apps routed through Spectre",
     ),
     NavItem(

@@ -37,7 +37,9 @@ class AppConfig:
     start_minimized: bool = False
 
     # Network hygiene
-    kill_switch: bool = True
+    # system = full-machine TCP/DNS via path (default); apps = SOCKS + Apps launcher only
+    routing_mode: str = "system"  # system | apps
+    kill_switch: bool = True  # only enforced in system mode
     block_ipv6: bool = True
     dns_mode: str = "remote"  # system | remote | custom
     dns_servers: str = "1.1.1.1, 9.9.9.9"
@@ -52,6 +54,12 @@ class AppConfig:
     log_level: str = "info"  # error | warn | info | debug
     log_to_file: bool = True
     notify_on_disconnect: bool = True
+
+    # Updates (GitHub Releases for digitizable/spectre-desktop)
+    check_for_updates: bool = True
+    update_check_interval_hours: int = 24
+    last_update_check: str = ""  # ISO-8601 UTC of last attempt
+    dismissed_update_version: str = ""  # do not re-prompt for this latest
 
     # Advanced
     mtu: int = 1280
@@ -160,8 +168,15 @@ class Services:
         self.log(f"Active profile → {profile.name}")
         return profile
 
-    def readiness(self) -> Readiness:
-        return profile_readiness(self.active_profile(), self.backends)
+    def readiness(self, *, live: bool = False) -> Readiness:
+        """Structural readiness, or live=True for connect preflight probes."""
+        return profile_readiness(
+            self.active_profile(),
+            self.backends,
+            routing_mode=self.config.routing_mode or "system",
+            kill_switch=bool(self.config.kill_switch),
+            live=live,
+        )
 
     def build_connect_payload(self, profile: Profile) -> dict[str, Any]:
         """Anticipated core payload — fully built on the desktop today."""
@@ -179,6 +194,11 @@ class Services:
                 for h in profile.hops
             ],
             "policy": {
+                "routing_mode": (
+                    self.config.routing_mode
+                    if self.config.routing_mode in ("system", "apps")
+                    else "system"
+                ),
                 "kill_switch": self.config.kill_switch,
                 "block_ipv6": self.config.block_ipv6,
                 "dns_mode": self.config.dns_mode,
@@ -195,9 +215,9 @@ class Services:
         }
 
     def connect_active(self) -> tuple[CoreStatus | None, Readiness]:
-        """Validate locally, then hand off to core (stub until core exists)."""
+        """Validate locally (live probes), then hand off to core."""
         profile = self.active_profile()
-        ready = profile_readiness(profile, self.backends)
+        ready = self.readiness(live=True)
         if not ready.ok:
             self.log(f"Connect blocked: {ready.summary}", level="warn")
             return None, ready
