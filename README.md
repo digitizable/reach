@@ -1,7 +1,7 @@
 # Spectre Desktop
 
 <p align="center">
-  <img src="data/assets/banner.png" alt="Spectre Desktop" width="980"/>
+  <img src="data/assets/banner-readme.png" alt="Spectre Desktop" width="980"/>
 </p>
 
 GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre): manage **backends** and **path profiles**, then Connect through the local **spectred** core.

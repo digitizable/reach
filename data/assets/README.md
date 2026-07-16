@@ -2,5 +2,5 @@
 
 | File | Use |
 |------|-----|
-| `banner.png` / `banner.svg` | README hero |
+| `banner-readme.png` / `banner-readme.svg` | README hero |
 | Other files | App icons, path marks (Tor/REALITY), etc. |
