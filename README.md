@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.2)
+## Status (0.3.3)
 
 Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing.
 
-**0.3.2:** Apps launch-session tracking on Disconnect; docs for Host → Mullvad → Tor core requirements (**spectred ≥ 0.3.7** for system DNS over Tor). **0.3.1:** disconnect clearnet safety + tray Quit.
+**0.3.3 hotfix:** home/chrome/tray poll spectred every 2s so CLI connect/disconnect updates the UI (live path hops from core when protected). **0.3.2:** Apps launch-session tracking; Mullvad→Tor core docs. **0.3.1:** disconnect clearnet safety + tray Quit.
 
 ## What it is
 

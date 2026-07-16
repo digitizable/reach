@@ -179,10 +179,14 @@ class SpectreApplication(Adw.Application):
         if self._tray is None or not self._tray.available:
             return
         try:
-            st = self.services.core.status()
-            detail = st.path_summary if st.state == CoreState.CONNECTED else (st.message or "")
-            if st.local_proxy and st.state == CoreState.CONNECTED:
-                detail = f"SOCKS {st.local_proxy}"
+            # force=True so tray tracks CLI connect/disconnect, not a stale cache
+            st = self.services.core.status(force=True)
+            if st.state == CoreState.CONNECTED:
+                detail = st.path_summary or "Protected"
+                if st.local_proxy:
+                    detail = f"{detail} · SOCKS {st.local_proxy}" if st.path_summary else f"SOCKS {st.local_proxy}"
+            else:
+                detail = st.message or st.state.value
             self._tray.update_state(st.state, detail)
         except Exception:
             pass

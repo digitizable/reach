@@ -38,6 +38,9 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._settings: SettingsPage | None = None
         self._window_title: Adw.WindowTitle | None = None
         self._ready = False
+        # Periodic core poll so CLI/tray path changes appear without clicking.
+        self._status_poll_id: int | None = None
+        self._last_status_sig: tuple | None = None
 
         root = Adw.ToolbarView()
         root.set_hexpand(True)
@@ -73,6 +76,97 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._navigate(DEFAULT_PAGE)
         self._sync_chrome()
         self.connect("close-request", self._on_close_request)
+        self.connect("map", self._on_map)
+        self.connect("unmap", self._on_unmap)
+        # Start polling even if already mapped
+        self._start_status_poll()
+
+    def _on_map(self, *_a) -> None:
+        self._start_status_poll()
+        # Immediate refresh when the window is shown again
+        GLib.idle_add(self._poll_core_status)
+
+    def _on_unmap(self, *_a) -> None:
+        # Keep polling while closed-to-tray so reopen is fresh; only stop on destroy.
+        pass
+
+    def _start_status_poll(self) -> None:
+        if self._status_poll_id is not None:
+            return
+        # 2s matches tray tick — cheap GET /v1/status with short timeout.
+        self._status_poll_id = GLib.timeout_add_seconds(2, self._poll_core_status)
+
+    def _stop_status_poll(self) -> None:
+        if self._status_poll_id is not None:
+            GLib.source_remove(self._status_poll_id)
+            self._status_poll_id = None
+
+    def do_unrealize(self) -> None:
+        self._stop_status_poll()
+        Adw.ApplicationWindow.do_unrealize(self)
+
+    def _status_signature(self, st) -> tuple:
+        return (
+            st.state.value if st.state is not None else "",
+            st.path_summary or "",
+            st.local_proxy or "",
+            st.active_profile or "",
+            st.profile_id or "",
+            tuple(st.hops or []),
+            bool(getattr(st, "routing_active", None)),
+            (getattr(st, "routing_mode", None) or ""),
+            bool(st.kill_switch_active),
+            (st.message or "")[:120],
+        )
+
+    def _sync_selected_profile_from_core(self, st) -> None:
+        """When core has a live path, keep desktop selection aligned."""
+        if st.state != CoreState.CONNECTED:
+            return
+        pid = (st.profile_id or "").strip()
+        if not pid:
+            return
+        if self._services.profiles.get(pid) is None:
+            return
+        if self._services.config.last_profile_id == pid:
+            return
+        self._services.config.last_profile_id = pid
+        if st.active_profile:
+            self._services.core.set_selected_profile(st.active_profile)
+        try:
+            self._services.save_config()
+        except Exception:
+            pass
+
+    def _poll_core_status(self) -> bool:
+        """Timer callback: re-fetch core status and repaint if anything changed."""
+        if not self._ready:
+            return True
+        try:
+            st = self._services.core.status(force=True)
+            self._sync_selected_profile_from_core(st)
+            sig = self._status_signature(st)
+            if sig == self._last_status_sig:
+                return True
+            self._last_status_sig = sig
+            if self._home is not None:
+                # force_core=False: we just fetched with force=True (cache warm).
+                self._home.refresh(live=False, force_core=False)
+            self._sync_chrome()
+            if self._apps is not None and hasattr(self._apps, "refresh_status_line"):
+                try:
+                    self._apps.refresh_status_line()
+                except Exception:
+                    pass
+            app = self.get_application()
+            if app is not None and hasattr(app, "_refresh_tray"):
+                try:
+                    app._refresh_tray()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return True  # keep timer
 
     def _on_close_request(self, *_a) -> bool:
         app = self.get_application()
@@ -246,7 +340,7 @@ class SpectreWindow(Adw.ApplicationWindow):
     def refresh_all(self) -> None:
         """Reload pages after connect/disconnect or explicit data edits."""
         if self._home is not None:
-            self._home.refresh(live=False)
+            self._home.refresh(live=False, force_core=True)
         if self._profiles is not None:
             self._profiles.reload()
         if self._backends is not None:
@@ -258,6 +352,11 @@ class SpectreWindow(Adw.ApplicationWindow):
             else:
                 self._apps.reload()
         self.refresh_update_settings()
+        try:
+            st = self._services.core.status(force=False)
+            self._last_status_sig = self._status_signature(st)
+        except Exception:
+            self._last_status_sig = None
         self._sync_chrome()
         app = self.get_application()
         if app is not None and hasattr(app, "_refresh_tray"):
@@ -302,7 +401,7 @@ class SpectreWindow(Adw.ApplicationWindow):
     def _idle_refresh_home(self) -> bool:
         if self._home is not None:
             try:
-                self._home.refresh(live=False)
+                self._home.refresh(live=False, force_core=True)
             except Exception:
                 pass
         return False
@@ -333,7 +432,11 @@ class SpectreWindow(Adw.ApplicationWindow):
             CoreState.CONNECTED: "Protected",
         }
         if self._window_title is not None:
-            self._window_title.set_subtitle(subtitles.get(st.state, st.state.value))
+            sub = subtitles.get(st.state, st.state.value)
+            # When protected, show which path the *core* has up (not a stale label).
+            if st.state == CoreState.CONNECTED and st.path_summary:
+                sub = st.path_summary
+            self._window_title.set_subtitle(sub)
 
     def toast(self, title: str, *, timeout: int | None = None) -> None:
         # Longer display when reminding users to reconnect after mid-session edits

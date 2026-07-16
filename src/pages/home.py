@@ -153,9 +153,13 @@ class HomePage(Gtk.Box):
             else:
                 self._on_toast(status.message or status.state.value)
 
-    def refresh(self, *, live: bool = False) -> None:
-        """Update home chrome. live=True only for Connect preflight (expensive)."""
-        st = self._services.core.status()
+    def refresh(self, *, live: bool = False, force_core: bool = False) -> None:
+        """Update home chrome from the live core.
+
+        force_core=True skips the CoreClient status TTL (used by the poller).
+        live=True runs connect preflight probes (expensive; only on Connect).
+        """
+        st = self._services.core.status(force=force_core)
         kind = kind_from_core(st.state)
         profile = self._services.active_profile()
         # Structural readiness for display; live TCP/CLI probes stay off the
@@ -175,7 +179,12 @@ class HomePage(Gtk.Box):
         whonix_role = str(env.get("whonix_role") or "")
 
         if active:
-            if st.local_proxy:
+            # Prefer core path_summary so CLI/tray connect matches the UI.
+            if st.path_summary and st.path_summary not in ("No path", ""):
+                detail = st.path_summary
+                if st.local_proxy:
+                    detail = f"{detail} · SOCKS {st.local_proxy}"
+            elif st.local_proxy:
                 detail = f"Path up · SOCKS {st.local_proxy}"
             else:
                 detail = st.message or "Traffic is on the active path."
@@ -222,11 +231,16 @@ class HomePage(Gtk.Box):
                 if socks and port:
                     detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
-        # Only surface Mullvad status when the active path actually uses it.
-        # Core may always report CLI state; that must not clutter Tor/VPN/etc.
+        # Only surface Mullvad status when the *live* path uses it (or the
+        # planned profile, when disconnected). Core always reports CLI state.
         from core.readiness import profile_uses_mullvad_app_socks
 
-        if profile_uses_mullvad_app_socks(profile, self._services.backends):
+        show_mv = False
+        if active and st.hops:
+            show_mv = any("mullvad" in str(h).lower() for h in st.hops)
+        elif profile_uses_mullvad_app_socks(profile, self._services.backends):
+            show_mv = True
+        if show_mv:
             mv = getattr(st, "mullvad", None)
             if isinstance(mv, dict) and mv.get("available") and mv.get("summary"):
                 summary = str(mv.get("summary") or "")
@@ -239,9 +253,14 @@ class HomePage(Gtk.Box):
         self._title.set_text(titles.get(st.state, st.state.value))
         self._detail.set_text(detail)
 
-        # Labels: prefer bound backend names when available
+        # Path graph: when live, trust the core hop list (CLI/tray may differ
+        # from the desktop's selected profile). When idle, show the planned profile.
         labels: list[str] = []
-        if profile is not None:
+        hops_for_icons: list[str] = []
+        if active and st.hops:
+            labels = list(st.hops)
+            hops_for_icons = list(st.hops)
+        elif profile is not None:
             for hop in profile.hops:
                 backend = (
                     self._services.backends.get(hop.backend_id)
@@ -249,7 +268,7 @@ class HomePage(Gtk.Box):
                     else None
                 )
                 labels.append(backend.name if backend else hop.kind)
-        hops_for_icons = profile.hop_kinds() if profile else []
+            hops_for_icons = profile.hop_kinds()
 
         clear_box(self._path_host)
         self._path_host.append(
@@ -260,11 +279,16 @@ class HomePage(Gtk.Box):
                 labels=labels or None,
             )
         )
-        if profile is None:
+        if active:
+            name = (st.active_profile or "").strip() or (
+                profile.name if profile is not None else ""
+            )
+            self._profile_label.set_text(f"{name} · live" if name else "live path")
+        elif profile is None:
             self._profile_label.set_text("")
         else:
             tag = "ready" if ready.ok else "incomplete"
-            self._profile_label.set_text(f"{profile.name} · {tag}")
+            self._profile_label.set_text(f"{profile.name} · {tag} · planned")
 
         if active or st.state == CoreState.CONNECTING:
             self._primary.set_label("Disconnect")
