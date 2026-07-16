@@ -120,7 +120,7 @@ button.nav-btn.nav-btn-active {
   line-height: 1.4;
 }
 
-/* Apps on path — routing / Mullvad callout */
+/* Exclude apps — routing / Mullvad callout */
 .apps-callout {
   background-color: #1a1a1a;
   border: 1px solid #333333;
@@ -132,6 +132,26 @@ button.nav-btn.nav-btn-active {
   font-size: 11px;
   color: #c8c8c8;
   line-height: 1.45;
+}
+
+/* Exclude apps — fill page; footer always visible under the list */
+.apps-page {
+  min-height: 0;
+}
+
+.apps-top {
+  min-height: 0;
+}
+
+.apps-list-scroll {
+  min-height: 0;
+}
+
+.apps-actions {
+  background-color: #0d0d0d;
+  border-top: 1px solid #262626;
+  padding-top: 8px;
+  min-height: 40px;
 }
 
 /* ── Home (compact, centered) ───────────────────────── */

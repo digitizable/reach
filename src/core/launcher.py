@@ -7,6 +7,8 @@ Contract (exclude-list split tunnel):
     (veth ``cn-host``; marks Spectre KS/sysroute already honor).
   - Fallback: ``mullvad-exclude`` (setuid mark-based exclusion; Spectre
     skips the same marks).
+  - Each launch forces a **separate process/instance** so a normal
+    (system-routed) copy can keep running while the excluded copy is clearnet.
   - Never runs ``clearnet-netns teardown`` (would kill every PID in the
     netns — including agents launched there).
   - Does not auto-``setup`` the netns from the GUI if missing (avoids
@@ -16,6 +18,7 @@ Contract (exclude-list split tunnel):
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -245,20 +248,449 @@ def _strip_proxy_env(env: dict[str, str]) -> dict[str, str]:
     return env
 
 
-def _build_clearnet_run_argv(clearnet_run: str, app_argv: list[str]) -> list[str]:
+# ── Separate instance (do not attach to already-open single-instance apps) ──
+
+_FIREFOX_EXES = frozenset(
+    {
+        "firefox",
+        "firefox-esr",
+        "firefox-bin",
+        "firefox-nightly",
+        "librewolf",
+        "waterfox",
+        "icecat",
+    }
+)
+_THUNDERBIRD_EXES = frozenset(
+    {"thunderbird", "thunderbird-esr", "thunderbird-bin", "betterbird"}
+)
+_CHROMIUM_EXES = frozenset(
+    {
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "google-chrome-beta",
+        "google-chrome-unstable",
+        "brave-browser",
+        "brave",
+        "microsoft-edge",
+        "microsoft-edge-stable",
+        "vivaldi",
+        "vivaldi-stable",
+        "opera",
+        "ungoogled-chromium",
+    }
+)
+_ELECTRON_EXES = frozenset(
+    {
+        "code",
+        "code-oss",
+        "codium",
+        "cursor",
+        "slack",
+        "discord",
+        "element-desktop",
+        "signal-desktop",
+        "spotify",
+        "obsidian",
+        "typora",
+        "gitkraken",
+    }
+)
+
+
+def _exe_basename(argv: list[str]) -> str:
+    if not argv:
+        return ""
+    return Path(argv[0]).name.lower()
+
+
+def _argv_has_prefix(argv: list[str], *prefixes: str) -> bool:
+    for a in argv[1:]:
+        for p in prefixes:
+            if a == p or a.startswith(p + "=") or a.startswith(p):
+                # careful: startswith(p) for --user-data-dir=/path
+                if a == p or a.startswith(p + "="):
+                    return True
+                if p.startswith("-") and a.startswith(p):
+                    return True
+    return False
+
+
+def _instance_dir(app: RoutedApp, *, tag: str = "exclude") -> Path:
+    from app_config import user_data_dir
+
+    key = (app.id or app.desktop_id or _slug_instance(app.name) or "app").strip()
+    key = re.sub(r"[^\w.\-]+", "-", key)[:80] or "app"
+    path = user_data_dir() / "instances" / tag / key
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _slug_instance(name: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return s or "app"
+
+
+def _mozilla_config_roots(exe: str) -> list[Path]:
+    """Candidate dirs that contain profiles.ini for Firefox-family browsers."""
+    home = Path.home()
+    roots: list[Path] = []
+    if exe in _THUNDERBIRD_EXES:
+        roots.extend(
+            [
+                home / ".thunderbird",
+                home / ".icedove",
+                home / "snap" / "thunderbird" / "common" / ".thunderbird",
+            ]
+        )
+    elif exe == "librewolf":
+        roots.extend(
+            [
+                home / ".librewolf",
+                home / ".var" / "app" / "io.gitlab.librewolf-community" / "config" / "librewolf",
+            ]
+        )
+    elif exe == "waterfox":
+        roots.append(home / ".waterfox")
+    else:
+        # firefox, firefox-esr, nightlies, …
+        roots.extend(
+            [
+                home / ".mozilla" / "firefox",
+                home / "snap" / "firefox" / "common" / ".mozilla" / "firefox",
+                home
+                / ".var"
+                / "app"
+                / "org.mozilla.firefox"
+                / ".mozilla"
+                / "firefox",
+            ]
+        )
+    return roots
+
+
+def resolve_mozilla_default_profile(exe: str) -> Path | None:
+    """Return the user's default Firefox/Thunderbird profile directory, if found.
+
+    Reads profiles.ini (Install* Default= or Profile* Default=1). Used so the
+    clearnet instance keeps bookmarks, logins, and extensions.
+    """
+    for root in _mozilla_config_roots(exe):
+        ini = root / "profiles.ini"
+        if not ini.is_file():
+            continue
+        try:
+            text = ini.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        # Parse loosely: track sections and keys.
+        section: str | None = None
+        profiles: list[dict[str, str]] = []
+        install_default_path: str | None = None
+        current: dict[str, str] = {}
+
+        def flush() -> None:
+            nonlocal current
+            if current.get("_section", "").startswith("Profile"):
+                profiles.append(current)
+            current = {}
+
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line or line.startswith(";") or line.startswith("#"):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                flush()
+                section = line[1:-1]
+                current = {"_section": section}
+                continue
+            if "=" not in line or section is None:
+                continue
+            key, _, val = line.partition("=")
+            key, val = key.strip(), val.strip()
+            current[key] = val
+            # Modern Firefox: [Install…] Default=relative/path
+            if section.startswith("Install") and key == "Default" and val:
+                install_default_path = val
+
+        flush()
+
+        def resolve_path(rel_or_abs: str, *, is_relative: bool) -> Path:
+            p = Path(rel_or_abs)
+            if not is_relative or p.is_absolute():
+                return p
+            return root / p
+
+        # Prefer Install* Default= (path relative to root)
+        if install_default_path:
+            cand = resolve_path(install_default_path, is_relative=True)
+            if cand.is_dir():
+                return cand
+
+        # ProfileN with Default=1
+        for prof in profiles:
+            if prof.get("Default") in ("1", "True", "true"):
+                path = prof.get("Path") or ""
+                if not path:
+                    continue
+                rel = prof.get("IsRelative", "1") in ("1", "True", "true")
+                cand = resolve_path(path, is_relative=rel)
+                if cand.is_dir():
+                    return cand
+
+        # First profile with a Path
+        for prof in profiles:
+            path = prof.get("Path") or ""
+            if not path:
+                continue
+            rel = prof.get("IsRelative", "1") in ("1", "True", "true")
+            cand = resolve_path(path, is_relative=rel)
+            if cand.is_dir():
+                return cand
+
+    return None
+
+
+# Skip locks + bulky caches when cloning a Mozilla profile into Spectre's copy.
+_MOZILLA_COPY_IGNORE_NAMES = frozenset(
+    {
+        "parent.lock",
+        "lock",
+        ".parentlock",
+        "Cache",
+        "cache2",
+        "startupCache",
+        "shader-cache",
+        "OfflineCache",
+        "thumbnails",
+        "safebrowsing",
+        "jumpListCache",
+        "datareporting",
+        "crashes",
+        "minidumps",
+        "gmp",
+        "gmp-gmpopenh264",
+        "gmp-widevinecdm",
+    }
+)
+_SPECTRE_PROFILE_META = ".spectre-profile-source"
+
+
+def _mozilla_copy_ignore(directory: str, names: list[str]) -> set[str]:
+    _ = directory
+    skip = set()
+    for n in names:
+        if n in _MOZILLA_COPY_IGNORE_NAMES:
+            skip.add(n)
+        elif n.startswith("Cache") or n.endswith(".lock"):
+            skip.add(n)
+    return skip
+
+
+def ensure_spectre_mozilla_profile(
+    app: RoutedApp,
+    exe: str,
+    *,
+    tag: str = "exclude",
+) -> tuple[Path, str]:
+    """Ensure a Spectre-owned Mozilla profile exists (copy of the user's default).
+
+    - Lives only under Spectre Desktop user data (per user, not shipped defaults).
+    - Never changes Firefox's default profile / profiles.ini.
+    - First launch copies once; later launches reuse the Spectre copy so the
+      clearnet instance can run beside a normal Firefox on the real profile.
+    """
+    inst = _instance_dir(app, tag=tag)
+    dest = inst / "mozilla-profile"
+    meta = dest / _SPECTRE_PROFILE_META
+    source = resolve_mozilla_default_profile(exe)
+
+    # Already cloned — reuse (user's ongoing clearnet bookmarks stay here).
+    if dest.is_dir() and meta.is_file():
+        try:
+            src_recorded = meta.read_text(encoding="utf-8").strip().splitlines()[0]
+        except OSError:
+            src_recorded = ""
+        note = "Spectre profile copy"
+        if src_recorded:
+            note = f"Spectre profile (from {Path(src_recorded).name})"
+        return dest, note
+
+    dest.mkdir(parents=True, exist_ok=True)
+
+    if source is None or not source.is_dir():
+        # No source — empty dir; Firefox creates a fresh profile there.
+        try:
+            meta.write_text("# no source profile found\n", encoding="utf-8")
+        except OSError:
+            pass
+        return dest, "Spectre profile (empty — no source found)"
+
+    # Fresh clone from the user's default profile into Spectre-only storage.
+    # Do not modify *source* or profiles.ini.
+    try:
+        # If dest has partial junk from a failed copy, clear non-meta contents.
+        for child in dest.iterdir():
+            if child.name == _SPECTRE_PROFILE_META:
+                continue
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                try:
+                    child.unlink()
+                except OSError:
+                    pass
+
+        # copytree into dest: copy contents of source
+        for item in source.iterdir():
+            if item.name in _MOZILLA_COPY_IGNORE_NAMES:
+                continue
+            target = dest / item.name
+            if item.is_dir():
+                shutil.copytree(
+                    item,
+                    target,
+                    symlinks=True,
+                    ignore=_mozilla_copy_ignore,
+                    dirs_exist_ok=True,
+                )
+            else:
+                try:
+                    shutil.copy2(item, target, follow_symlinks=False)
+                except OSError:
+                    try:
+                        shutil.copy2(item, target)
+                    except OSError:
+                        pass
+
+        meta.write_text(
+            f"{source}\n"
+            f"# Spectre Desktop clearnet profile copy\n"
+            f"# Not registered as Firefox's default — only used with --profile\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        return dest, f"Spectre profile (copy incomplete: {exc})"
+
+    return dest, f"Spectre profile (copied from {source.name})"
+
+
+def argv_for_separate_instance(
+    argv: list[str],
+    app: RoutedApp,
+    *,
+    tag: str = "exclude",
+) -> tuple[list[str], str, bool]:
+    """Rewrite *argv* so a second copy of the app starts instead of focusing
+    an already-running (system-routed) instance.
+
+    Returns (new_argv, note, private_xdg).
+    """
+    if not argv:
+        return argv, "empty command", False
+
+    out = list(argv)
+    note = "new process"
+    private_xdg = False
+    inst = _instance_dir(app, tag=tag)
+    # WM class is applied later by prepare_exclude_window_identity (unique + badge).
+
+    # flatpak run <app-id> [args…] — still a new host process; instance
+    # isolation inside the sandbox is limited without app-specific flags.
+    if _exe_basename(out) == "flatpak" and len(out) >= 3 and out[1] == "run":
+        return out, "flatpak process", False
+
+    exe = _exe_basename(out)
+
+    if exe in _FIREFOX_EXES or exe in _THUNDERBIRD_EXES:
+        # Spectre-owned profile = one-time copy of the user's default profile.
+        # Both can run at once (different profile paths). Menu Firefox stays on
+        # the real default; we never rewrite profiles.ini.
+        flags: list[str] = []
+        if not _argv_has_prefix(out, "--no-remote", "-no-remote"):
+            flags.append("--no-remote")
+        if exe in _FIREFOX_EXES and not _argv_has_prefix(
+            out, "--new-instance", "-new-instance"
+        ):
+            flags.append("--new-instance")
+        if not _argv_has_prefix(out, "-profile", "--profile", "-P"):
+            profile, note = ensure_spectre_mozilla_profile(app, exe, tag=tag)
+            flags.extend(["--profile", str(profile)])
+        else:
+            note = "requested profile"
+        out = [out[0], *flags, *out[1:]]
+        return out, note, False
+
+    if exe in _CHROMIUM_EXES or exe in _ELECTRON_EXES:
+        udd = inst / "user-data"
+        udd.mkdir(parents=True, exist_ok=True)
+        flags = []
+        if not _argv_has_prefix(out, "--user-data-dir"):
+            flags.append(f"--user-data-dir={udd}")
+        if exe in _CHROMIUM_EXES and not _argv_has_prefix(out, "--new-window"):
+            flags.append("--new-window")
+        out = [out[0], *flags, *out[1:]]
+        # Electron often locks on XDG paths too
+        private_xdg = exe in _ELECTRON_EXES
+        return out, "new instance + private data dir", private_xdg
+
+    # Generic multi-instance apps: new process is enough. Single-instance GTK
+    # apps may still activate the existing window — no universal flag.
+    return out, "new process (separate from menu launch)", False
+
+
+def env_for_separate_instance(
+    env: dict[str, str],
+    app: RoutedApp,
+    *,
+    tag: str = "exclude",
+    private_xdg: bool = False,
+) -> dict[str, str]:
+    """Env tweaks that mark this as a Spectre-launched instance.
+
+    When *private_xdg* is True (browsers / Electron), use a dedicated
+    XDG config/cache tree so single-instance locks do not collide with the
+    normal system-routed copy. Generic apps keep the user's normal XDG paths
+    so settings/themes still work.
+    """
+    env = dict(env)
+    inst = _instance_dir(app, tag=tag)
+    env["SPECTRE_LAUNCH_INSTANCE"] = tag
+    env["SPECTRE_INSTANCE_DIR"] = str(inst)
+    if private_xdg:
+        xdg_config = inst / "config"
+        xdg_cache = inst / "cache"
+        xdg_data = inst / "share"
+        xdg_config.mkdir(parents=True, exist_ok=True)
+        xdg_cache.mkdir(parents=True, exist_ok=True)
+        xdg_data.mkdir(parents=True, exist_ok=True)
+        env["XDG_CONFIG_HOME"] = str(xdg_config)
+        env["XDG_CACHE_HOME"] = str(xdg_cache)
+        env["XDG_DATA_HOME"] = str(xdg_data)
+    return env
+
+
+def _build_clearnet_run_argv(
+    clearnet_run: str,
+    app_argv: list[str],
+    *,
+    extra_env: Mapping[str, str] | None = None,
+) -> list[str]:
     """sudo -n clearnet-run [--env K=V ...] -- cmd...
 
     Never passes teardown. Never invokes clearnet-netns directly.
     """
     sudo = shutil.which("sudo") or "sudo"
     cmd: list[str] = [sudo, "-n", "--", clearnet_run]
-    user = (os.environ.get("CLEARNET_USER") or os.environ.get("USER") or "").strip()
-    if user:
-        # clearnet-run uses SUDO_USER / CLEARNET_USER; export via env for child.
-        # SUDO_USER is set by sudo automatically when invoked from a user session.
-        pass
     for key, val in _session_env_pairs():
         cmd.extend(["--env", f"{key}={val}"])
+    if extra_env:
+        for key, val in extra_env.items():
+            if val:
+                cmd.extend(["--env", f"{key}={val}"])
     cmd.append("--")
     cmd.extend(app_argv)
     return cmd
@@ -276,7 +708,10 @@ def launch_app(
     bind_address: str = "127.0.0.1",
     tooling: ExcludeTooling | None = None,
 ) -> LaunchResult:
-    """Start *app* excluded from Spectre / tunnel (clearnet).
+    """Start a **new instance** of *app* excluded from Spectre / tunnel (clearnet).
+
+    Does not focus or reuse an already-open system-routed copy when the app
+    supports a separate-instance flag (browsers, many Electron apps).
 
     ``bind_address`` is accepted for API compatibility; exclude launch does
     not use SOCKS. SOCKS include is available via :func:`launch_app_socks`.
@@ -290,18 +725,47 @@ def launch_app(
     except ValueError as exc:
         return LaunchResult(False, str(exc))
 
+    app_argv, instance_note, private_xdg = argv_for_separate_instance(
+        app_argv, app, tag="exclude"
+    )
+    # Unique WM class + badged .desktop so the taskbar can show a clearnet mark
+    try:
+        from core.exclude_badge import prepare_exclude_window_identity
+
+        app_argv, badge_note = prepare_exclude_window_identity(app, app_argv)
+        instance_note = f"{instance_note} · {badge_note}"
+    except Exception:
+        pass
+    env = _launch_env_for_exclude(app, private_xdg=private_xdg)
+
     tools = tooling if tooling is not None else probe_exclude_tooling(check_sudo=True)
 
     # 1) Preferred: clearnet netns
     if tools.clearnet_run and tools.netns_ready and tools.sudo_nopasswd:
-        cmd = _build_clearnet_run_argv(tools.clearnet_run, app_argv)
+        # Pass instance XDG + SPECTRE_* into the netns via clearnet-run --env
+        cmd = _build_clearnet_run_argv(
+            tools.clearnet_run,
+            app_argv,
+            extra_env={
+                k: env[k]
+                for k in (
+                    "SPECTRE_EXCLUDED",
+                    "SPECTRE_LAUNCH_INSTANCE",
+                    "SPECTRE_INSTANCE_DIR",
+                    "XDG_CONFIG_HOME",
+                    "XDG_CACHE_HOME",
+                    "XDG_DATA_HOME",
+                )
+                if k in env
+            },
+        )
         return _popen_exclude(
             cmd,
             app_name=app.name,
             method="clearnet-run",
             session=session,
-            env=_launch_env_for_exclude(),
-            detail=f"netns {tools.netns_name}",
+            env=env,
+            detail=f"netns {tools.netns_name} · {instance_note}",
         )
 
     # 2) Fallback: mark-based mullvad-exclude (Spectre honors same marks)
@@ -312,18 +776,25 @@ def launch_app(
             app_name=app.name,
             method="mullvad-exclude",
             session=session,
-            env=_launch_env_for_exclude(),
-            detail="mark-based clearnet",
+            env=env,
+            detail=f"mark-based clearnet · {instance_note}",
         )
 
     # Explain why we failed (no silent SOCKS fallback — that would re-include).
     return LaunchResult(False, _exclude_unavailable_message(tools))
 
 
-def _launch_env_for_exclude() -> dict[str, str]:
+def _launch_env_for_exclude(
+    app: RoutedApp | None = None,
+    *,
+    private_xdg: bool = False,
+) -> dict[str, str]:
     env = _strip_proxy_env(dict(os.environ))
-    # Hint for debugging / child tooling
     env["SPECTRE_EXCLUDED"] = "1"
+    if app is not None:
+        env = env_for_separate_instance(
+            env, app, tag="exclude", private_xdg=private_xdg
+        )
     return env
 
 
@@ -404,7 +875,7 @@ def _popen_exclude(
     if session is not None and proc.pid:
         session.track(proc.pid, app_name)
 
-    msg = f"Excluded “{app_name}” · {method}"
+    msg = f"New instance “{app_name}” excluded · {method}"
     if detail:
         msg += f" · {detail}"
     return LaunchResult(True, msg, pid=proc.pid, method=method)

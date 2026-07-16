@@ -20,7 +20,7 @@ from core.apps import RoutedApp
 from core.client import CoreState
 from core.launcher import launch_app, probe_exclude_tooling
 from services import Services
-from widgets.chrome import clear_box, page_header, scroll_body
+from widgets.chrome import clear_box, page_header
 
 
 class AppsPage(Gtk.Box):
@@ -34,6 +34,7 @@ class AppsPage(Gtk.Box):
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("page")
+        self.add_css_class("apps-page")
         self.set_hexpand(True)
         self.set_vexpand(True)
         self._services = services
@@ -54,20 +55,35 @@ class AppsPage(Gtk.Box):
         add_btn.connect("clicked", self._on_add_command)
         self.append(page_header("Exclude from path", end=add_btn))
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        body.add_css_class("page-body")
-        body.set_valign(Gtk.Align.START)
+        # Compact top chrome — long copy was eating the 600px window.
+        top = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        top.add_css_class("apps-top")
+        top.set_margin_start(12)
+        top.set_margin_end(12)
+        top.set_margin_top(8)
+        top.set_vexpand(False)
 
         self._hint = Gtk.Label(label="", wrap=True, xalign=0)
         self._hint.add_css_class("muted")
-        body.append(self._hint)
+        self._hint.set_ellipsize(Pango.EllipsizeMode.END)
+        self._hint.set_lines(2)
+        self._hint.set_tooltip_text(
+            "Launch apps outside Spectre (clearnet). Preferred: clearnet-run "
+            "netns. Fallback: mullvad-exclude. Setup once: spectre setup-clearnet. "
+            "Firefox: first exclude copies your default profile into a Spectre-only "
+            "profile (under this user account); menu Firefox keeps the real default. "
+            "Excluded windows use a badged taskbar icon (amber slash) when the DE supports it."
+        )
+        top.append(self._hint)
 
-        self._callout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._callout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self._callout.add_css_class("apps-callout")
         self._callout.set_visible(False)
 
         self._callout_label = Gtk.Label(label="", wrap=True, xalign=0)
         self._callout_label.add_css_class("apps-callout-text")
+        self._callout_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self._callout_label.set_lines(3)
         self._callout.append(self._callout_label)
 
         callout_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -76,23 +92,24 @@ class AppsPage(Gtk.Box):
         self._switch_system_btn = Gtk.Button(label="Use system routing")
         self._switch_system_btn.add_css_class("suggested-action")
         self._switch_system_btn.set_tooltip_text(
-            "Switch Settings → Routing mode to Entire system "
-            "(exclude list applies after next Connect)"
+            "Switch Settings → Routing mode to Entire system"
         )
         self._switch_system_btn.connect("clicked", self._on_switch_system)
         callout_actions.append(self._switch_system_btn)
 
-        self._settings_btn = Gtk.Button(label="Open Settings")
+        self._settings_btn = Gtk.Button(label="Settings")
         self._settings_btn.add_css_class("flat")
         self._settings_btn.connect("clicked", self._on_open_settings)
         callout_actions.append(self._settings_btn)
 
         self._callout.append(callout_actions)
-        body.append(self._callout)
+        top.append(self._callout)
 
-        self._status = Gtk.Label(label="", xalign=0, wrap=True)
+        self._status = Gtk.Label(label="", xalign=0)
         self._status.add_css_class("muted")
-        body.append(self._status)
+        self._status.set_ellipsize(Pango.EllipsizeMode.END)
+        self._status.set_single_line_mode(True)
+        top.append(self._status)
 
         search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._search = Gtk.SearchEntry()
@@ -107,36 +124,61 @@ class AppsPage(Gtk.Box):
         refresh.set_tooltip_text("Rescan installed applications")
         refresh.connect("clicked", self._on_refresh)
         search_row.append(refresh)
-        body.append(search_row)
+        top.append(search_row)
+        self.append(top)
+
+        # List + action bar in one overlay so buttons always sit on the list.
+        self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self._list.add_css_class("profile-list")
+
+        self._list_scroll = Gtk.ScrolledWindow()
+        self._list_scroll.add_css_class("apps-list-scroll")
+        self._list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self._list_scroll.set_hexpand(True)
+        self._list_scroll.set_vexpand(True)
+        self._list_scroll.set_propagate_natural_height(False)
+        self._list_scroll.set_propagate_natural_width(False)
+        self._list_scroll.set_child(self._list)
 
         self._empty = Gtk.Label(
             label="No applications found.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")
-        self._empty.set_margin_top(16)
         self._empty.set_halign(Gtk.Align.CENTER)
-        body.append(self._empty)
+        self._empty.set_valign(Gtk.Align.CENTER)
+        self._empty.set_vexpand(True)
 
-        self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self._list.add_css_class("profile-list")
-        self._list_scroll = Gtk.ScrolledWindow()
-        self._list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self._list_scroll.set_hexpand(True)
-        self._list_scroll.set_vexpand(False)
-        self._list_scroll.set_propagate_natural_height(True)
-        self._list_scroll.set_child(self._list)
-        body.append(self._list_scroll)
+        list_area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        list_area.set_hexpand(True)
+        list_area.set_vexpand(True)
+        list_area.set_margin_start(12)
+        list_area.set_margin_end(12)
+        list_area.append(self._empty)
+        list_area.append(self._list_scroll)
 
+        # Bottom action bar — always visible under the list (not overlaid on rows).
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        actions.set_halign(Gtk.Align.END)
-        actions.set_margin_top(4)
+        actions.add_css_class("apps-actions")
+        actions.set_halign(Gtk.Align.FILL)
+        actions.set_hexpand(True)
+        actions.set_vexpand(False)
+        actions.set_margin_start(12)
+        actions.set_margin_end(12)
+        actions.set_margin_top(6)
+        actions.set_margin_bottom(10)
+
+        # Spacer pushes buttons to the end while keeping the bar full-width.
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        actions.append(spacer)
 
         self._launch_btn = Gtk.Button(label="Exclude (clearnet)")
         self._launch_btn.add_css_class("suggested-action")
         self._launch_btn.set_sensitive(False)
         self._launch_btn.set_tooltip_text(
-            "Launch this app outside Spectre (clearnet netns or exclude marks)"
+            "Start a separate clearnet instance (does not take over the "
+            "normal/system-routed window)"
         )
         self._launch_btn.connect("clicked", self._on_launch)
         actions.append(self._launch_btn)
@@ -154,9 +196,10 @@ class AppsPage(Gtk.Box):
         self._del_btn.set_tooltip_text("Remove custom command")
         self._del_btn.connect("clicked", self._on_delete)
         actions.append(self._del_btn)
-        body.append(actions)
 
-        self.append(scroll_body(body, margin=12))
+        self.append(list_area)
+        self.append(actions)
+
         self.reload()
 
     def _on_search(self, entry: Gtk.SearchEntry) -> None:
@@ -176,26 +219,19 @@ class AppsPage(Gtk.Box):
 
     def _tooling(self):
         if self._tooling_cache is None:
-            # check_sudo can take ~1s once; cache for the page session
             self._tooling_cache = probe_exclude_tooling(check_sudo=True)
         return self._tooling_cache
 
     def _refresh_hint(self) -> None:
-        base = (
-            "Exclude list: open an app here to run it on clearnet while the rest "
-            "of the machine stays on Spectre (system routing). Preferred path is "
-            "the clearnet network namespace (clearnet-run); fallback is "
-            "mullvad-exclude marks that Spectre already honors."
-        )
         if self._routing_mode() == "system":
-            extra = " Routing is Entire system — exclude is the split-tunnel carve-out."
-        else:
-            extra = (
-                " Routing is Selected apps only — the machine is already clearnet "
-                "from Spectre; exclude still launches clearnet isolation but is "
-                "usually unnecessary."
+            self._hint.set_text(
+                "Starts a separate clearnet instance — keep using the normal app "
+                "on Spectre from the menu."
             )
-        self._hint.set_text(base + extra)
+        else:
+            self._hint.set_text(
+                "Selected apps only is on — machine is already clearnet from Spectre."
+            )
 
     def _refresh_callout(self) -> None:
         tools = self._tooling()
@@ -204,11 +240,8 @@ class AppsPage(Gtk.Box):
         if not tools.any_ready:
             self._callout.set_visible(True)
             self._callout_label.set_text(
-                "No working exclude helper. "
-                + tools.summary()
-                + ". One-time (from the Spectre core install): spectre setup-clearnet "
-                "— installs clearnet netns, clearnet-run, sudoers, and boot unit. "
-                "Never teardown while agents use the netns. Fallback: mullvad-exclude."
+                "No exclude helper ready. Run: spectre setup-clearnet  "
+                f"({tools.summary()})"
             )
             self._switch_system_btn.set_visible(False)
             self._settings_btn.set_visible(True)
@@ -217,29 +250,22 @@ class AppsPage(Gtk.Box):
         if mode == "apps":
             self._callout.set_visible(True)
             self._callout_label.set_text(
-                "Selected apps only is on — Spectre does not system-redirect "
-                "traffic. Exclude still works for isolation, but the usual "
-                "model is Entire system + exclude carve-outs. Helper: "
-                + tools.summary()
-                + "."
+                "Prefer Entire system routing + exclude carve-outs. "
+                f"{tools.summary()}"
             )
             self._switch_system_btn.set_visible(True)
             self._settings_btn.set_visible(True)
             return
 
-        # system mode + tools OK — only warn if using fallback or partial setup
         if tools.can_clearnet_run:
             self._callout.set_visible(False)
             self._switch_system_btn.set_visible(False)
             return
 
-        # Fallback-only
         self._callout.set_visible(True)
         self._callout_label.set_text(
-            "Using mark-based exclude ("
-            + tools.summary()
-            + "). For full netns isolation, set up clearnet-run + passwordless "
-            "sudo. Spectre already skips Mullvad exclusion marks and cn-host."
+            f"Fallback exclude only ({tools.summary()}). "
+            "For netns: spectre setup-clearnet"
         )
         self._switch_system_btn.set_visible(False)
         self._settings_btn.set_visible(True)
@@ -274,28 +300,23 @@ class AppsPage(Gtk.Box):
         n_sys = self._services.apps.count_system()
         n_custom = len(self._services.apps.list(include_system=False))
         n_open = self._services.launch_session.active_count()
-        names = self._services.launch_session.names()
-        mode = (
-            "system routing (exclude list)"
-            if self._routing_mode() == "system"
-            else "apps only"
+        mode = "system" if self._routing_mode() == "system" else "apps-only"
+        helper = "netns" if tools.can_clearnet_run else (
+            "marks" if tools.can_mullvad_exclude else "none"
         )
-        base = f"{n_sys} installed"
+        parts = [f"{n_sys} apps", mode, helper]
         if n_custom:
-            base += f" · {n_custom} custom"
-        base += f" · {mode}"
-        base += f" · {tools.summary()}"
+            parts.insert(1, f"{n_custom} custom")
         if n_open:
-            shown = ", ".join(names[:3])
-            if n_open > 3:
-                shown += f" +{n_open - 3}"
-            base += f" · {n_open} excluded ({shown})"
+            parts.append(f"{n_open} open")
         if st.state == CoreState.CONNECTED and st.local_proxy:
-            self._status.set_text(f"{base} · path up · SOCKS {st.local_proxy}")
+            parts.append(f"up · {st.local_proxy}")
         elif st.state == CoreState.CONNECTED:
-            self._status.set_text(f"{base} · path up")
+            parts.append("path up")
         else:
-            self._status.set_text(f"{base} · path down")
+            parts.append("path down")
+        self._status.set_text(" · ".join(parts))
+        self._status.set_tooltip_text(tools.summary())
         self._update_action_sensitivity()
 
     def reload(self) -> None:
@@ -304,15 +325,15 @@ class AppsPage(Gtk.Box):
             include_system=True,
             query=self._filter,
         )
-        self._empty.set_visible(len(apps) == 0)
-        self._list_scroll.set_visible(len(apps) > 0)
-        self._list.set_visible(len(apps) > 0)
+        empty = len(apps) == 0
+        self._empty.set_visible(empty)
+        self._list_scroll.set_visible(not empty)
         clear_box(self._list)
         self._row_buttons.clear()
 
         self.refresh_status_line()
 
-        if not apps:
+        if empty:
             if self._filter.strip():
                 self._empty.set_text(f"No apps match “{self._filter.strip()}”.")
             else:
@@ -335,32 +356,22 @@ class AppsPage(Gtk.Box):
         if has and self._selected_id:
             self._scroll_selected_into_view()
 
-    def _update_list_viewport(self, *, has_selection: bool) -> None:
-        _SELECTED_MAX = 220
-        if has_selection:
-            self._list_scroll.set_max_content_height(_SELECTED_MAX)
-            self._list_scroll.set_size_request(-1, _SELECTED_MAX)
-            self._list_scroll.set_vexpand(False)
-        else:
-            self._list_scroll.set_max_content_height(-1)
-            self._list_scroll.set_size_request(-1, -1)
-            self._list_scroll.set_vexpand(True)
-
     def _update_action_sensitivity(self) -> None:
         has = self._selected_id is not None and self._selected_id in self._row_buttons
         tools = self._tooling()
         can_open = bool(has) and tools.any_ready
-        self._update_list_viewport(has_selection=has)
         self._launch_btn.set_sensitive(can_open)
         if can_open:
             self._launch_btn.add_css_class("suggested-action")
             if tools.can_clearnet_run:
                 self._launch_btn.set_tooltip_text(
-                    f"Launch outside Spectre via clearnet-run (netns {tools.netns_name})"
+                    f"New clearnet instance via clearnet-run (netns {tools.netns_name}). "
+                    "Your normal menu launch stays on Spectre."
                 )
             else:
                 self._launch_btn.set_tooltip_text(
-                    "Launch outside Spectre via mullvad-exclude (mark-based clearnet)"
+                    "New clearnet instance via mullvad-exclude. "
+                    "Your normal menu launch stays on Spectre."
                 )
         else:
             self._launch_btn.remove_css_class("suggested-action")
@@ -368,7 +379,7 @@ class AppsPage(Gtk.Box):
                 self._launch_btn.set_tooltip_text("Select an app to exclude from the path")
             else:
                 self._launch_btn.set_tooltip_text(
-                    "No exclude helper ready — see the notice above"
+                    "No exclude helper ready — run spectre setup-clearnet"
                 )
         self._toggle_btn.set_sensitive(has)
         app = self._services.apps.get(self._selected_id) if self._selected_id else None
@@ -510,7 +521,6 @@ class AppsPage(Gtk.Box):
         if not app.enabled:
             self._toast("App is hidden/disabled — enable it first")
             return
-        # Fresh probe at launch so sudo/netns state is current
         self._tooling_cache = None
         tools = self._tooling()
         result = launch_app(
@@ -524,9 +534,7 @@ class AppsPage(Gtk.Box):
             self._services.log(
                 f"Excluded app {app.name} method={result.method} pid={result.pid}"
             )
-            self.refresh_status_line()
-        else:
-            self.refresh_status_line()
+        self.refresh_status_line()
 
     def _on_toggle(self, *_a) -> None:
         if not self._selected_id:

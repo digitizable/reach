@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.7)
+## Status (0.3.8)
 
 Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, and core handoff for kill switch + system routing.
 
-**0.3.7:** **Exclude apps** — clearnet netns / `mullvad-exclude` carve-outs under system routing; pair with **spectred ≥ 0.3.10** (`spectre setup-clearnet`). **0.3.6:** Strict hop composition. **0.3.5:** Stealth/REALITY copy.
+**0.3.8:** Exclude apps — separate instances, Firefox profile copy, badged taskbar icons, taller apps layout. **0.3.7:** clearnet netns / `mullvad-exclude` carve-outs; pair with **spectred ≥ 0.3.10** (`spectre setup-clearnet`). **0.3.6:** Strict hop composition.
 
 ## What it is
 

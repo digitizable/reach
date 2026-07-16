@@ -302,7 +302,10 @@ class SpectreWindow(Adw.ApplicationWindow):
         stack.set_hexpand(True)
         stack.set_vexpand(True)
         stack.set_hhomogeneous(False)
-        stack.set_vhomogeneous(False)
+        # Homogeneous height so every page gets the fixed window allocation.
+        # Without this, tall pages (e.g. Apps with 100+ rows) request full list
+        # height and the bottom chrome is clipped by the 600px window.
+        stack.set_vhomogeneous(True)
         stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         stack.set_transition_duration(120)
 
