@@ -43,6 +43,7 @@ class SettingsPage(Gtk.Box):
 
         body.append(self._group_core())
         body.append(self._group_session())
+        body.append(self._group_mullvad())
         body.append(self._group_network())
         body.append(self._group_privacy())
         body.append(self._group_updates())
@@ -109,7 +110,9 @@ class SettingsPage(Gtk.Box):
     def _group_session(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Session")
-        g.set_description("Startup and path selection behavior")
+        g.set_description(
+            "Startup and path selection. Path policy is applied when you Connect."
+        )
 
         self._auto_connect = Adw.SwitchRow(
             title="Connect on launch",
@@ -202,12 +205,75 @@ class SettingsPage(Gtk.Box):
             1, int(self._update_interval.get_value())
         )
 
+    def _group_mullvad(self) -> Adw.PreferencesGroup:
+        from core import mullvad as mv
+
+        g = Adw.PreferencesGroup()
+        g.set_title("Mullvad VPN")
+        g.set_description(
+            "Official integration with the Mullvad Linux app/CLI. "
+            "Spectre does not replace Mullvad — it can start the tunnel for "
+            "SOCKS hops and respects split-tunnel exclusions in system routing."
+        )
+
+        st = mv.probe()
+        self._mv_status = Adw.ActionRow(
+            title="Status",
+            subtitle=st.summary,
+        )
+        g.add(self._mv_status)
+
+        self._mv_auto = Adw.SwitchRow(
+            title="Connect Mullvad automatically",
+            subtitle="When a path uses Mullvad tunnel SOCKS (10.64.0.1), run "
+            "mullvad connect before Spectre Connect",
+        )
+        self._mv_auto.set_active(self._cfg.mullvad_auto_connect)
+        g.add(self._mv_auto)
+
+        row = Adw.ActionRow(title="Tunnel control")
+        row.set_subtitle("Uses the system mullvad CLI")
+        btn_on = Gtk.Button(label="Connect")
+        btn_on.set_valign(Gtk.Align.CENTER)
+        btn_on.add_css_class("suggested-action")
+        btn_on.connect("clicked", self._on_mullvad_connect)
+        row.add_suffix(btn_on)
+        btn_off = Gtk.Button(label="Disconnect")
+        btn_off.set_valign(Gtk.Align.CENTER)
+        btn_off.add_css_class("flat")
+        btn_off.connect("clicked", self._on_mullvad_disconnect)
+        row.add_suffix(btn_off)
+        g.add(row)
+        return g
+
+    def _on_mullvad_connect(self, *_a) -> None:
+        from core import mullvad as mv
+
+        if self._on_toast:
+            self._on_toast("Connecting Mullvad…")
+        st = mv.ensure_connected(timeout_sec=45.0)
+        if hasattr(self, "_mv_status"):
+            self._mv_status.set_subtitle(st.summary)
+        if self._on_toast:
+            self._on_toast(st.summary if st.ready_for_socks_hop else (st.error or st.summary))
+
+    def _on_mullvad_disconnect(self, *_a) -> None:
+        from core import mullvad as mv
+
+        ok, msg = mv.disconnect()
+        st = mv.probe()
+        if hasattr(self, "_mv_status"):
+            self._mv_status.set_subtitle(st.summary)
+        if self._on_toast:
+            self._on_toast(msg if ok else (st.error or msg))
+
     def _group_network(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Network")
         g.set_description(
             "How traffic uses the path when connected. "
-            "If the network freezes, run: spectre unlock"
+            "Changes apply after you disconnect and Connect again. "
+            "If the network freezes: spectre unlock"
         )
 
         self._routing = Adw.ComboRow(title="Routing mode")
@@ -346,6 +412,7 @@ class SettingsPage(Gtk.Box):
         cfg.auto_connect = self._auto_connect.get_active()
         cfg.start_minimized = self._start_min.get_active()
         cfg.notify_on_disconnect = self._notify.get_active()
+        cfg.mullvad_auto_connect = self._mv_auto.get_active()
         cfg.routing_mode = (
             "apps" if int(self._routing.get_selected()) == 1 else "system"
         )
@@ -367,4 +434,4 @@ class SettingsPage(Gtk.Box):
 
         self._services.save_config()
         if self._on_toast:
-            self._on_toast("Settings saved")
+            self._on_toast(self._services.with_reconnect_hint("Settings saved"))

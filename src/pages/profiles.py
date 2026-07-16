@@ -95,12 +95,20 @@ class ProfilesPage(Gtk.Box):
             self._edit_btn.set_sensitive(False)
             self._del_btn.set_sensitive(False)
             return
+        prev = self._services.config.last_profile_id
         if self._services.set_active_profile(profile_id) is None:
             return
         self._edit_btn.set_sensitive(True)
         self._del_btn.set_sensitive(True)
         if self._on_changed is not None:
             self._on_changed()
+        # Selecting a different profile while live does not switch the path
+        if prev != profile_id and self._services.is_path_connected():
+            p = self._services.profiles.get(profile_id)
+            name = p.name if p else "profile"
+            self._toast(
+                self._services.with_reconnect_hint(f"Active profile → {name}")
+            )
 
     def _on_new(self, *_a) -> None:
         dialog = ProfileEditorDialog(
@@ -125,7 +133,9 @@ class ProfilesPage(Gtk.Box):
         self.reload()
         if self._on_changed:
             self._on_changed()
-        self._toast(f"Created “{profile.name}”")
+        self._toast(
+            self._services.with_reconnect_hint(f"Created “{profile.name}”")
+        )
 
     def _edit_id(self, profile_id: str) -> None:
         profile = self._services.profiles.get(profile_id)
@@ -161,7 +171,7 @@ class ProfilesPage(Gtk.Box):
         self.reload()
         if self._on_changed:
             self._on_changed()
-        self._toast("Profile updated")
+        self._toast(self._services.with_reconnect_hint("Profile updated"))
 
     def _on_delete(self, *_a) -> None:
         pid = self._list.selected_id()

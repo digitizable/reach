@@ -15,7 +15,7 @@ from typing import Any
 from app_config import user_config_dir
 from core.apps import AppStore
 from core.backends import BackendStore
-from core.client import CoreClient, CoreStatus, default_socket_path
+from core.client import CoreClient, CoreState, CoreStatus, default_socket_path
 from core.desktop_log import write_log
 from core.profiles import Profile, ProfileStore
 from core.readiness import Readiness, profile_readiness
@@ -60,6 +60,9 @@ class AppConfig:
     update_check_interval_hours: int = 24
     last_update_check: str = ""  # ISO-8601 UTC of last attempt
     dismissed_update_version: str = ""  # do not re-prompt for this latest
+
+    # Mullvad (official CLI integration)
+    mullvad_auto_connect: bool = True  # connect Mullvad if SOCKS hop needs it
 
     # Advanced
     mtu: int = 1280
@@ -146,6 +149,25 @@ class Services:
         self.core.api_token = self.config.api_token
         self.log("Config saved")
 
+    def is_path_connected(self) -> bool:
+        """True when spectred reports an active path (not merely core online)."""
+        try:
+            return self.core.status().state == CoreState.CONNECTED
+        except Exception:
+            return False
+
+    def with_reconnect_hint(self, message: str) -> str:
+        """Append a reconnect reminder when the path is live.
+
+        Desktop saves apply to disk immediately; hops/policy only take effect
+        on the next Connect.
+        """
+        msg = (message or "").strip() or "Saved"
+        if not self.is_path_connected():
+            return msg
+        # Keep short for Adw.Toast; full policy is also noted in Settings.
+        return f"{msg} · reconnect to apply to the live path"
+
     def active_profile(self) -> Profile | None:
         cfg_id = self.config.last_profile_id
         if cfg_id:
@@ -216,7 +238,22 @@ class Services:
 
     def connect_active(self) -> tuple[CoreStatus | None, Readiness]:
         """Validate locally (live probes), then hand off to core."""
+        from core.mullvad import ensure_connected
+        from core.readiness import profile_uses_mullvad_app_socks
+
         profile = self.active_profile()
+        # Official Mullvad support: bring tunnel up before SOCKS-hop preflight.
+        if (
+            self.config.mullvad_auto_connect
+            and profile is not None
+            and profile_uses_mullvad_app_socks(profile, self.backends)
+        ):
+            mv = ensure_connected(timeout_sec=45.0)
+            self.log(f"Mullvad ensure: {mv.summary}")
+            if not mv.ready_for_socks_hop and mv.available:
+                # Fall through to readiness for a clear toast
+                pass
+
         ready = self.readiness(live=True)
         if not ready.ok:
             self.log(f"Connect blocked: {ready.summary}", level="warn")

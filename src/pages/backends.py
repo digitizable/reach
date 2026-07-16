@@ -172,7 +172,9 @@ class BackendsPage(Gtk.Box):
         if self._on_changed:
             self._on_changed()
         status = "complete" if b.is_configured() else "incomplete draft"
-        self._toast(f"Created “{b.name}” ({status})")
+        self._toast(
+            self._services.with_reconnect_hint(f"Created “{b.name}” ({status})")
+        )
 
     def _on_edit(self, *_a) -> None:
         if not self._selected_id:
@@ -200,7 +202,7 @@ class BackendsPage(Gtk.Box):
         self.reload()
         if self._on_changed:
             self._on_changed()
-        self._toast("Backend updated")
+        self._toast(self._services.with_reconnect_hint("Backend updated"))
 
     def _on_delete(self, *_a) -> None:
         if not self._selected_id:

@@ -8,9 +8,9 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.2.0)
+## Status (0.3.0)
 
-Routing modes (system / apps-only), connect preflight (Mullvad/Tor/proxy/tools), auto-discovered Apps launcher, GitHub update checks, and policy handoff to spectred for kill switch + system routing.
+Official **Mullvad VPN** integration (CLI status, auto-connect for SOCKS hops, Settings controls), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing (with Mullvad split-tunnel respect).
 
 ## What it is
 

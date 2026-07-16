@@ -221,6 +221,16 @@ class HomePage(Gtk.Box):
                 if socks and port:
                     detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
+        # Official Mullvad status when CLI is present
+        try:
+            from core.mullvad import probe as mullvad_probe
+
+            mv = mullvad_probe()
+            if mv.available and mv.summary and mv.summary not in detail:
+                detail = f"{detail} · {mv.summary}" if detail else mv.summary
+        except Exception:
+            pass
+
         for k in ("offline", "idle", "busy", "live", "unknown", "bad"):
             self._dot.remove_css_class(f"state-{k}")
         self._dot.add_css_class(f"state-{kind.value}")

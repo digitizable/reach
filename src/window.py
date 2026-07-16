@@ -285,7 +285,10 @@ class SpectreWindow(Adw.ApplicationWindow):
         if self._window_title is not None:
             self._window_title.set_subtitle(subtitles.get(st.state, st.state.value))
 
-    def toast(self, title: str, *, timeout: int = 3) -> None:
+    def toast(self, title: str, *, timeout: int | None = None) -> None:
+        # Longer display when reminding users to reconnect after mid-session edits
+        if timeout is None:
+            timeout = 6 if "reconnect" in (title or "").lower() else 3
         t = Adw.Toast(title=title)
         t.set_timeout(timeout)
         self._toast_overlay.add_toast(t)
