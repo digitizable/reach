@@ -149,6 +149,17 @@ class BackendEditorDialog(Adw.MessageDialog):
             self._kind_fields.append(hint)
 
         elif kind == "REALITY":
+            # Import share link
+            import_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            self._r_link = Gtk.Entry()
+            self._r_link.set_placeholder_text("Paste vless://… share link")
+            self._r_link.set_hexpand(True)
+            import_row.append(self._r_link)
+            imp = Gtk.Button(label="Import")
+            imp.connect("clicked", self._import_vless)
+            import_row.append(imp)
+            self._kind_fields.append(self._field("Share link", import_row))
+
             self._r_server = Gtk.Entry()
             self._r_server.set_placeholder_text("hostname or IP")
             self._r_server.set_text(b.reality_server if b else "")
@@ -164,22 +175,44 @@ class BackendEditorDialog(Adw.MessageDialog):
             self._kind_fields.append(self._field("UUID", self._r_uuid))
 
             self._r_pk = Gtk.Entry()
-            self._r_pk.set_placeholder_text("Public key")
+            self._r_pk.set_placeholder_text("Public key (pbk)")
             self._r_pk.set_text(b.reality_public_key if b else "")
             self._kind_fields.append(self._field("Public key", self._r_pk))
 
             self._r_sid = Gtk.Entry()
+            self._r_sid.set_placeholder_text("shortId (optional)")
             self._r_sid.set_text(b.reality_short_id if b else "")
             self._kind_fields.append(self._field("Short ID", self._r_sid))
 
             self._r_sni = Gtk.Entry()
-            self._r_sni.set_placeholder_text("SNI / dest")
+            self._r_sni.set_placeholder_text("SNI / serverName (e.g. www.microsoft.com)")
             self._r_sni.set_text(b.reality_sni if b else "")
             self._kind_fields.append(self._field("SNI", self._r_sni))
+
+            self._r_fp = Gtk.Entry()
+            self._r_fp.set_placeholder_text("chrome")
+            fp = "chrome"
+            if b is not None:
+                fp = (getattr(b, "reality_fingerprint", None) or "chrome").strip() or "chrome"
+            self._r_fp.set_text(fp)
+            self._kind_fields.append(self._field("Fingerprint", self._r_fp))
 
             self._r_flow = Gtk.Entry()
             self._r_flow.set_text(b.reality_flow if b else "xtls-rprx-vision")
             self._kind_fields.append(self._field("Flow", self._r_flow))
+
+            self._r_spx = Gtk.Entry()
+            self._r_spx.set_placeholder_text("spiderX path (optional)")
+            self._r_spx.set_text(getattr(b, "reality_spider_x", "") if b else "")
+            self._kind_fields.append(self._field("SpiderX", self._r_spx))
+
+            hint = Gtk.Label(
+                label="Requires xray-core on PATH (scripts/install-xray.sh).",
+                xalign=0,
+                wrap=True,
+            )
+            hint.add_css_class("muted")
+            self._kind_fields.append(hint)
 
         elif kind == "Tor":
             self._tor_system = Gtk.CheckButton(label="Use system Tor")
@@ -229,6 +262,35 @@ class BackendEditorDialog(Adw.MessageDialog):
             return fallback
         item = model.get_item(idx)
         return item.get_string() if item is not None else fallback  # type: ignore[attr-defined]
+
+    def _import_vless(self, *_a) -> None:
+        from core.vless import parse_vless_uri
+
+        raw = self._r_link.get_text().strip()
+        if not raw:
+            if self._on_error:
+                self._on_error("Paste a vless:// link first")
+            return
+        try:
+            fields = parse_vless_uri(raw)
+        except ValueError as exc:
+            if self._on_error:
+                self._on_error(str(exc))
+            return
+        if fields.get("name") and not self._name.get_text().strip():
+            self._name.set_text(str(fields["name"]))
+        self._r_server.set_text(str(fields.get("reality_server") or ""))
+        if fields.get("reality_port"):
+            self._r_port.set_value(int(fields["reality_port"]))
+        self._r_uuid.set_text(str(fields.get("reality_uuid") or ""))
+        self._r_pk.set_text(str(fields.get("reality_public_key") or ""))
+        self._r_sid.set_text(str(fields.get("reality_short_id") or ""))
+        self._r_sni.set_text(str(fields.get("reality_sni") or ""))
+        self._r_fp.set_text(str(fields.get("reality_fingerprint") or "chrome"))
+        self._r_flow.set_text(str(fields.get("reality_flow") or "xtls-rprx-vision"))
+        self._r_spx.set_text(str(fields.get("reality_spider_x") or ""))
+        if self._on_error:
+            self._on_error("Imported REALITY fields from link")
 
     def _browse_vpn_config(self, *_a) -> None:
         dialog = Gtk.FileDialog(title="WireGuard config")
@@ -289,6 +351,8 @@ class BackendEditorDialog(Adw.MessageDialog):
                 reality_short_id=self._r_sid.get_text().strip(),
                 reality_sni=self._r_sni.get_text().strip(),
                 reality_flow=self._r_flow.get_text().strip(),
+                reality_fingerprint=self._r_fp.get_text().strip() or "chrome",
+                reality_spider_x=self._r_spx.get_text().strip(),
             )
         elif kind == "Tor":
             data.update(

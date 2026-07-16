@@ -61,6 +61,8 @@ class Backend:
     reality_short_id: str = ""
     reality_sni: str = ""
     reality_flow: str = "xtls-rprx-vision"
+    reality_fingerprint: str = "chrome"
+    reality_spider_x: str = ""
 
     # --- Tor ---
     tor_socks_host: str = "127.0.0.1"
