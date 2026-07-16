@@ -320,9 +320,9 @@ class SettingsPage(Gtk.Box):
         self._routing.set_selected(1 if mode == "apps" else 0)
         self._routing.set_subtitle(
             "Entire system (recommended): all traffic via Spectre after Connect. "
-            "Launched apps only: clearnet by default; only Apps → Launch and "
-            "manual SOCKS clients use the path. Apps is a launcher, not an "
-            "include/exclude list."
+            "Launched apps only: clearnet by default; only “Open via path” and "
+            "manual SOCKS clients use Spectre. Path-opened apps keep running on "
+            "Disconnect but lose SOCKS network until you Connect again."
         )
         g.add(self._routing)
 

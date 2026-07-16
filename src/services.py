@@ -17,6 +17,7 @@ from core.apps import AppStore
 from core.backends import BackendStore
 from core.client import CoreClient, CoreState, CoreStatus, default_socket_path
 from core.desktop_log import write_log
+from core.launcher import LaunchSession
 from core.profiles import Profile, ProfileStore
 from core.readiness import Readiness, profile_readiness
 
@@ -105,6 +106,8 @@ class Services:
     profiles: ProfileStore = field(default_factory=ProfileStore)
     backends: BackendStore = field(default_factory=BackendStore)
     apps: AppStore = field(default_factory=AppStore)
+    # Apps opened via the Apps page for this Connect session
+    launch_session: LaunchSession = field(default_factory=LaunchSession)
     _config_path: Path = field(default_factory=lambda: user_config_dir() / "config.json")
 
     @classmethod
@@ -277,17 +280,19 @@ class Services:
     def disconnect(self) -> tuple[CoreStatus, str]:
         """Tear down Spectre path and restore clearnet.
 
-        Returns (status, toast_message). System routing is flushed by the core;
-        we also run ``spectre unlock`` as a belt-and-suspenders clearnet restore.
+        Returns (status, toast_message). Path-opened apps are left running;
+        their SOCKS points at Spectre, so network fails until Connect again
+        (they are not killed and are not steered onto clearnet by us).
+        System routing is flushed by the core; we also run ``spectre unlock``.
         When the active profile uses Mullvad tunnel SOCKS and auto-connect is
-        on, we disconnect Mullvad too so Disconnect is a full stop (not
-        "Spectre down but Mullvad still up").
+        on, we disconnect Mullvad too.
         """
         from core import mullvad as mv
         from core.readiness import profile_uses_mullvad_app_socks
 
         profile = self.active_profile()
         used_mullvad = profile_uses_mullvad_app_socks(profile, self.backends)
+
         status = self.core.disconnect()
         self.log("Disconnect requested")
 
@@ -297,6 +302,12 @@ class Services:
             self.log(unlock_note)
 
         parts = ["Spectre path stopped"]
+        n_path = self.launch_session.active_count()
+        if n_path:
+            parts.append(
+                f"{n_path} path app{'s' if n_path != 1 else ''} still open "
+                "(no network until Connect)"
+            )
         if used_mullvad and self.config.mullvad_auto_connect:
             ok, msg = mv.disconnect()
             if ok:

@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.1)
+## Status (0.3.2)
 
 Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing.
 
-**0.3.1 hotfix:** disconnect no longer blackholes clearnet; tray Quit removes the panel icon; right-click menu works on Cinnamon.
+**0.3.2:** Apps launch-session tracking on Disconnect; docs for Host → Mullvad → Tor core requirements (**spectred ≥ 0.3.7** for system DNS over Tor). **0.3.1:** disconnect clearnet safety + tray Quit.
 
 ## What it is
 
@@ -82,7 +82,7 @@ The home screen warns when a profile uses Mullvad app SOCKS in a way that confli
 | **REALITY** | Incomplete fields, `xray` missing, or server name won’t resolve |
 | **System routing** | `spectre-nft` helper not set up (`spectre setup-killswitch`) |
 
-**Mullvad → local Tor:** the core does **not** SOCKS-nest `10.64.0.1` into `127.0.0.1:9050` (that dials loopback on the remote side and fails). Mullvad stays the full-tunnel underlay; Spectre dials system Tor. Traffic is still Host → Mullvad → Tor. Requires **spectred ≥ 0.3.4**.
+**Mullvad → local Tor:** the core does **not** SOCKS-nest `10.64.0.1` into `127.0.0.1:9050` (that dials loopback on the remote side and fails). Mullvad stays the full-tunnel underlay; Spectre dials system Tor. Traffic is still Host → Mullvad → Tor. Requires **spectred ≥ 0.3.4** for underlay routing, **≥ 0.3.6** so local SOCKS does not abort slow Tor circuit builds, and **≥ 0.3.7** so system-routing DNS uses Tor SOCKS RESOLVE (public DNS over TCP `:53` through Tor is blocked by most exits — browsers could not resolve names).
 
 Structural checks (backend bound, enabled, complete) always run; list “ready” tags stay structural-only so scrolling Profiles stays snappy.
 

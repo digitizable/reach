@@ -199,7 +199,7 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._home = HomePage(
             self._services,
             on_toast=self.toast,
-            on_state_changed=self._sync_chrome,
+            on_state_changed=self._on_connection_state_changed,
             on_navigate=self._navigate,
         )
         self._profiles = ProfilesPage(
@@ -314,6 +314,15 @@ class SpectreWindow(Adw.ApplicationWindow):
             except Exception:
                 pass
         return False
+
+    def _on_connection_state_changed(self) -> None:
+        """Home Connect/Disconnect — keep chrome and Apps open-button in sync."""
+        self._sync_chrome()
+        if self._apps is not None and hasattr(self._apps, "refresh_status_line"):
+            try:
+                self._apps.refresh_status_line()
+            except Exception:
+                pass
 
     def _sync_chrome(self) -> None:
         st = self._services.core.status()

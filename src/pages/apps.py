@@ -1,10 +1,13 @@
-"""Apps — launch installed/custom apps through the active Spectre path.
+"""Apps — open programs via Spectre’s local SOCKS.
 
-This page is a *launcher*, not a split-tunnel membership list:
-- Entire system routing: machine already uses Spectre after Connect; Launch
-  still injects SOCKS so the process prefers the path.
-- Launched apps / SOCKS only: only what you Launch (or point at local SOCKS)
-  uses the path; the rest of the OS stays clearnet.
+Simple contract:
+  - Open an app here anytime (even before Connect) — it is pointed at Spectre SOCKS.
+  - While connected, cooperative apps use the path.
+  - While disconnected, those apps keep running but network via SOCKS fails
+    (until you Connect again). They are not killed.
+
+This is not a split-tunnel membership list. Apps opened from the normal
+menu/dock are unchanged.
 """
 
 from __future__ import annotations
@@ -41,19 +44,19 @@ class AppsPage(Gtk.Box):
         self._row_buttons: dict[str, Gtk.CheckButton] = {}
         self._filter = ""
         self._show_disabled = False
+        self._selection_guard = False
 
         add_btn = Gtk.Button()
         add_btn.set_icon_name("list-add-symbolic")
         add_btn.add_css_class("flat")
         add_btn.set_tooltip_text("Add custom command")
         add_btn.connect("clicked", self._on_add_command)
-        self.append(page_header("Apps", end=add_btn))
+        self.append(page_header("Open via Spectre", end=add_btn))
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         body.add_css_class("page-body")
         body.set_valign(Gtk.Align.START)
 
-        # Mode-aware: this page is a launcher, not an include/exclude membership list.
         self._hint = Gtk.Label(label="", wrap=True, xalign=0)
         self._hint.add_css_class("muted")
         body.append(self._hint)
@@ -86,18 +89,28 @@ class AppsPage(Gtk.Box):
         self._empty.set_halign(Gtk.Align.CENTER)
         body.append(self._empty)
 
+        # List scrolls on its own. When an app is selected, cap height so the
+        # Open / actions row below stays on screen (no trek past 100 apps).
         self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self._list.add_css_class("profile-list")
-        body.append(self._list)
+        self._list_scroll = Gtk.ScrolledWindow()
+        self._list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self._list_scroll.set_hexpand(True)
+        self._list_scroll.set_vexpand(False)
+        self._list_scroll.set_propagate_natural_height(True)
+        self._list_scroll.set_child(self._list)
+        body.append(self._list_scroll)
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         actions.set_halign(Gtk.Align.END)
+        actions.set_margin_top(4)
 
-        self._launch_btn = Gtk.Button(label="Launch via Spectre")
+        self._launch_btn = Gtk.Button(label="Open on path")
         self._launch_btn.add_css_class("suggested-action")
         self._launch_btn.set_sensitive(False)
         self._launch_btn.set_tooltip_text(
-            "Start the selected app through the active Spectre SOCKS path"
+            "Start this app via Spectre SOCKS. Works while connected; "
+            "while disconnected the app stays open but has no path network."
         )
         self._launch_btn.connect("clicked", self._on_launch)
         actions.append(self._launch_btn)
@@ -143,23 +156,32 @@ class AppsPage(Gtk.Box):
         mode = (self._services.config.routing_mode or "system").strip().lower()
         return "apps" if mode == "apps" else "system"
 
+    def _path_up(self) -> bool:
+        """True when Spectre is fully connected with a local SOCKS address."""
+        st = self._services.core.status()
+        if st.state != CoreState.CONNECTED:
+            return False
+        return bool((st.local_proxy or "").strip())
+
     def _refresh_hint(self) -> None:
-        """Explain launcher role; copy depends on Settings → Routing mode."""
+        """One contract, short mode note."""
+        base = (
+            "Open an app anytime — it is pointed at Spectre SOCKS (you can open "
+            "before Connect). While the path is up, it uses Spectre. If you "
+            "Disconnect, the app stays open but network via SOCKS stops until "
+            "you Connect again. Apps started from the normal menu are unaffected."
+        )
         if self._routing_mode() == "apps":
-            self._hint.set_text(
-                "This is a launcher, not a checklist of apps on the path. "
-                "Routing is “Launched apps / SOCKS only”: only apps you Launch "
-                "here (or other clients pointed at Spectre SOCKS) use the path — "
-                "everything else stays on clearnet. Prefer Entire system when you "
-                "want the whole machine protected."
+            extra = (
+                " Routing is “Launched apps / SOCKS only”: the rest of the machine "
+                "stays on clearnet unless something else uses Spectre SOCKS."
             )
         else:
-            self._hint.set_text(
-                "This is a launcher, not a split-tunnel exception list. "
-                "Routing is Entire system: after Connect, the whole machine uses "
-                "Spectre. Launch still starts an app with SOCKS set so it prefers "
-                "the path — selecting an app does not exclude it from the tunnel."
+            extra = (
+                " Routing is Entire system: after Connect the whole machine uses "
+                "Spectre; this page still aims specific apps at SOCKS explicitly."
             )
+        self._hint.set_text(base + extra)
 
     def refresh_status_line(self) -> None:
         """Update hint + path/count line without rebuilding the app list."""
@@ -167,28 +189,33 @@ class AppsPage(Gtk.Box):
         st = self._services.core.status()
         n_sys = self._services.apps.count_system()
         n_custom = len(self._services.apps.list(include_system=False))
+        n_open = self._services.launch_session.active_count()
         mode = "apps only" if self._routing_mode() == "apps" else "system routing"
         base = f"{n_sys} installed"
         if n_custom:
             base += f" · {n_custom} custom"
         base += f" · {mode}"
+        if n_open:
+            base += f" · {n_open} open on path"
         if st.state == CoreState.CONNECTED and st.local_proxy:
             self._status.set_text(f"{base} · path up · SOCKS {st.local_proxy}")
         elif st.state == CoreState.CONNECTED:
             self._status.set_text(f"{base} · path up · waiting for local SOCKS")
         else:
-            self._status.set_text(f"{base} · connect on Home before launching")
+            bind = (self._services.config.bind_address or "127.0.0.1").strip()
+            self._status.set_text(
+                f"{base} · path down · open apps now (SOCKS {bind}:10808) or Connect first"
+            )
+        self._update_action_sensitivity()
 
     def reload(self) -> None:
-        # Default list hides disabled/hidden apps unless searching by name empty
-        # and we want to show only enabled. Allow filter to still find them when
-        # query matches after including disabled? Keep simple: show enabled only.
         apps = self._services.apps.list(
             enabled_only=not self._show_disabled,
             include_system=True,
             query=self._filter,
         )
         self._empty.set_visible(len(apps) == 0)
+        self._list_scroll.set_visible(len(apps) > 0)
         self._list.set_visible(len(apps) > 0)
         clear_box(self._list)
         self._row_buttons.clear()
@@ -204,15 +231,11 @@ class AppsPage(Gtk.Box):
                     "Install desktop apps or add a custom command with +."
                 )
 
-        group: Gtk.CheckButton | None = None
         for app in apps:
-            btn = self._make_row(app, group)
-            if group is None:
-                group = btn
-            else:
-                btn.set_group(group)
+            btn = self._make_row(app)
+            # Independent toggles (not a radio group) so click-again deselects.
             if self._selected_id == app.id:
-                btn.set_active(True)
+                self._set_row_active(btn, True)
             self._row_buttons[app.id] = btn
             self._list.append(btn)
 
@@ -220,10 +243,43 @@ class AppsPage(Gtk.Box):
         if not has:
             self._selected_id = None
         self._update_action_sensitivity()
+        if has and self._selected_id:
+            self._scroll_selected_into_view()
+
+    def _update_list_viewport(self, *, has_selection: bool) -> None:
+        """When something is selected, shrink the list so actions stay visible."""
+        # ~6–7 rows; enough to see context, short enough that Open stays on screen.
+        _SELECTED_MAX = 220
+        if has_selection:
+            self._list_scroll.set_max_content_height(_SELECTED_MAX)
+            self._list_scroll.set_size_request(-1, _SELECTED_MAX)
+            self._list_scroll.set_vexpand(False)
+        else:
+            self._list_scroll.set_max_content_height(-1)
+            self._list_scroll.set_size_request(-1, -1)
+            self._list_scroll.set_vexpand(True)
 
     def _update_action_sensitivity(self) -> None:
         has = self._selected_id is not None and self._selected_id in self._row_buttons
-        self._launch_btn.set_sensitive(has)
+        path_up = self._path_up()
+        # Allow open while disconnected (SOCKS env points at Spectre in advance).
+        can_open = bool(has)
+        self._update_list_viewport(has_selection=has)
+        self._launch_btn.set_sensitive(can_open)
+        if can_open:
+            self._launch_btn.add_css_class("suggested-action")
+            if path_up:
+                self._launch_btn.set_tooltip_text(
+                    "Start this app via Spectre SOCKS (path is up)."
+                )
+            else:
+                self._launch_btn.set_tooltip_text(
+                    "Start via Spectre SOCKS now — network works after you Connect. "
+                    "While disconnected, the app has no path network."
+                )
+        else:
+            self._launch_btn.remove_css_class("suggested-action")
+            self._launch_btn.set_tooltip_text("Select an app to open on the path")
         self._mode_btn.set_sensitive(has)
         self._toggle_btn.set_sensitive(has)
         app = self._services.apps.get(self._selected_id) if self._selected_id else None
@@ -239,7 +295,7 @@ class AppsPage(Gtk.Box):
         else:
             self._toggle_btn.set_label("Disable" if app.enabled else "Enable")
 
-    def _make_row(self, app: RoutedApp, group: Gtk.CheckButton | None) -> Gtk.CheckButton:
+    def _make_row(self, app: RoutedApp) -> Gtk.CheckButton:
         btn = Gtk.CheckButton()
         btn.add_css_class("profile-row")
 
@@ -280,11 +336,42 @@ class AppsPage(Gtk.Box):
         btn.connect("toggled", self._on_toggled, app.id)
         return btn
 
-    def _on_toggled(self, button: Gtk.CheckButton, app_id: str) -> None:
-        if not button.get_active():
+    def _scroll_selected_into_view(self) -> None:
+        """Keep the selected row visible inside the capped list viewport."""
+        if not self._selected_id:
             return
-        self._selected_id = app_id
-        self._update_action_sensitivity()
+        btn = self._row_buttons.get(self._selected_id)
+        if btn is None:
+            return
+        try:
+            btn.grab_focus()
+        except Exception:
+            pass
+
+    def _set_row_active(self, btn: Gtk.CheckButton, active: bool) -> None:
+        """Set active without re-entering _on_toggled."""
+        self._selection_guard = True
+        try:
+            btn.set_active(active)
+        finally:
+            self._selection_guard = False
+
+    def _on_toggled(self, button: Gtk.CheckButton, app_id: str) -> None:
+        if self._selection_guard:
+            return
+        if button.get_active():
+            # Single selection: clear any other active row.
+            for other_id, other in self._row_buttons.items():
+                if other_id != app_id and other.get_active():
+                    self._set_row_active(other, False)
+            self._selected_id = app_id
+            self._update_action_sensitivity()
+            self._scroll_selected_into_view()
+            return
+        # Click again on the selected app → deselect.
+        if self._selected_id == app_id:
+            self._selected_id = None
+            self._update_action_sensitivity()
 
     def _toast(self, msg: str) -> None:
         if self._on_toast:
@@ -296,7 +383,7 @@ class AppsPage(Gtk.Box):
             heading="Add custom command",
             body=(
                 "For tools without a desktop entry. "
-                "Launch via Spectre starts them through the active path SOCKS."
+                "Opened via Spectre SOCKS (even before Connect)."
             ),
         )
         dialog.add_response("cancel", "Cancel")
@@ -345,12 +432,16 @@ class AppsPage(Gtk.Box):
         if not app.enabled:
             self._toast("App is hidden/disabled — enable it first")
             return
-        result = launch_app(app, self._services.core)
+        result = launch_app(
+            app,
+            self._services.core,
+            session=self._services.launch_session,
+            bind_address=self._services.config.bind_address or "127.0.0.1",
+        )
         self._toast(result.message)
-        if not result.ok and "Connect" in result.message and self._on_navigate:
-            self._on_navigate("home")
         if result.ok:
             self._services.log(f"Launched app {app.name} pid={result.pid}")
+            self.refresh_status_line()
 
     def _on_toggle_mode(self, *_a) -> None:
         if not self._selected_id:
@@ -372,7 +463,6 @@ class AppsPage(Gtk.Box):
             return
         was_enabled = app.enabled
         self._services.apps.update(app.id, enabled=not was_enabled)
-        # If we hide a system app, clear selection when it leaves the list
         if was_enabled and app.is_system:
             self._selected_id = None
         self.reload()
