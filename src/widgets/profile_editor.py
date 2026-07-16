@@ -85,6 +85,31 @@ class ProfileEditorDialog(Adw.MessageDialog):
         self._notes.set_text(profile.notes if profile else "")
         box.append(self._labeled("Notes", self._notes))
 
+        info_lab = Gtk.Label(label="Dashboard info (ⓘ)", xalign=0)
+        info_lab.add_css_class("field-label")
+        box.append(info_lab)
+        info_hint = Gtk.Label(
+            label="Shown on Home when you press info. Leave empty for "
+            "built-in text (seed profiles) or “Custom configuration.”",
+            xalign=0,
+            wrap=True,
+        )
+        info_hint.add_css_class("muted")
+        box.append(info_hint)
+        info_scroll = Gtk.ScrolledWindow()
+        info_scroll.set_min_content_height(72)
+        info_scroll.set_hexpand(True)
+        self._info_buf = Gtk.TextBuffer()
+        self._info_buf.set_text(profile.info if profile else "")
+        info_view = Gtk.TextView(buffer=self._info_buf)
+        info_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        info_view.set_top_margin(4)
+        info_view.set_bottom_margin(4)
+        info_view.set_left_margin(4)
+        info_view.set_right_margin(4)
+        info_scroll.set_child(info_view)
+        box.append(info_scroll)
+
         self._favorite = Gtk.CheckButton(label="Favorite")
         if profile and profile.favorite:
             self._favorite.set_active(True)
@@ -294,6 +319,9 @@ class ProfileEditorDialog(Adw.MessageDialog):
                 self._on_error(msg)
             self._update_path_hint_error(msg)
             return None
+        start = self._info_buf.get_start_iter()
+        end = self._info_buf.get_end_iter()
+        info = self._info_buf.get_text(start, end, False).strip()
         return {
             "name": name,
             "summary": self._summary.get_text().strip(),
@@ -301,6 +329,7 @@ class ProfileEditorDialog(Adw.MessageDialog):
                 {"kind": h.kind, "backend_id": h.backend_id} for h in self._hops
             ],
             "notes": self._notes.get_text().strip(),
+            "info": info,
             "favorite": self._favorite.get_active(),
         }
 

@@ -152,11 +152,31 @@ button.nav-btn.nav-btn-active {
   line-height: 1.4;
 }
 
+.home-profile-row {
+  margin: 0;
+}
+
 .home-profile {
   font-size: 11px;
   font-weight: 500;
   color: #808080;
   letter-spacing: 0.02em;
+}
+
+.home-info-btn {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  color: #707070;
+}
+
+.home-info-btn:hover {
+  color: #c8c8c8;
+  background-color: #1a1a1a;
+}
+
+.home-info-btn image {
+  opacity: 1;
 }
 
 .home-cta {

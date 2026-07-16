@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from gi.repository import Gtk
+from gi.repository import Adw, Gtk
 
 from core.client import CoreState
 from core.path_explain import explain_live, explain_profile
+from core.path_info import path_info_text
 from core.readiness import profile_uses_mullvad_app_socks
 from services import Services
 from widgets.chrome import clear_box, fit_body
@@ -68,10 +69,27 @@ class HomePage(Gtk.Box):
         self._path_host.set_hexpand(False)
         body.append(self._path_host)
 
+        # Profile name + info (i) button
+        profile_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        profile_row.add_css_class("home-profile-row")
+        profile_row.set_halign(Gtk.Align.CENTER)
+        profile_row.set_valign(Gtk.Align.CENTER)
+
         self._profile_label = Gtk.Label(label="", xalign=0.5)
         self._profile_label.add_css_class("home-profile")
         self._profile_label.set_halign(Gtk.Align.CENTER)
-        body.append(self._profile_label)
+        profile_row.append(self._profile_label)
+
+        self._info_btn = Gtk.Button()
+        self._info_btn.add_css_class("flat")
+        self._info_btn.add_css_class("circular")
+        self._info_btn.add_css_class("home-info-btn")
+        self._info_btn.set_icon_name("help-about-symbolic")
+        self._info_btn.set_tooltip_text("What does this path do?")
+        self._info_btn.set_valign(Gtk.Align.CENTER)
+        self._info_btn.connect("clicked", self._on_info)
+        profile_row.append(self._info_btn)
+        body.append(profile_row)
 
         cta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         cta_row.set_halign(Gtk.Align.CENTER)
@@ -91,6 +109,101 @@ class HomePage(Gtk.Box):
     def _nav(self, page_id: str) -> None:
         if self._on_navigate is not None:
             self._on_navigate(page_id)
+
+    def _root_window(self) -> Gtk.Window | None:
+        w = self.get_root()
+        return w if isinstance(w, Gtk.Window) else None
+
+    def _on_info(self, *_a) -> None:
+        st = self._services.core.status()
+        profile = self._services.active_profile()
+        routing = getattr(self._services.config, "routing_mode", "system") or "system"
+        heading, body = path_info_text(
+            profile,
+            self._services.backends,
+            routing_mode=str(routing),
+            connected=st.state == CoreState.CONNECTED,
+        )
+        parent = self._root_window()
+        dialog = Adw.MessageDialog(
+            transient_for=parent,
+            heading=heading,
+            body=body,
+        )
+        dialog.add_response("ok", "Got it")
+        if profile is not None:
+            dialog.add_response("edit", "Edit…")
+        dialog.set_default_response("ok")
+        dialog.set_close_response("ok")
+
+        def on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response == "edit" and profile is not None:
+                self._edit_profile_info(profile.id)
+
+        dialog.connect("response", on_response)
+        dialog.present()
+
+    def _edit_profile_info(self, profile_id: str) -> None:
+        from core.path_info import resolve_profile_info
+
+        profile = self._services.profiles.get(profile_id)
+        if profile is None:
+            return
+        parent = self._root_window()
+        dialog = Adw.MessageDialog(
+            transient_for=parent,
+            heading=f"Edit info — {profile.name}",
+            body=(
+                "This text appears when you press ⓘ on the dashboard. "
+                "Clear it to restore the built-in default (seed profiles) "
+                "or “Custom configuration.” (your own profiles)."
+            ),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.set_margin_top(8)
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_min_content_height(160)
+        scrolled.set_min_content_width(320)
+        scrolled.set_hexpand(True)
+        scrolled.set_vexpand(True)
+        buf = Gtk.TextBuffer()
+        # Show effective text for editing (including defaults resolved in).
+        buf.set_text(resolve_profile_info(profile))
+        view = Gtk.TextView(buffer=buf)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        view.set_top_margin(6)
+        view.set_bottom_margin(6)
+        view.set_left_margin(6)
+        view.set_right_margin(6)
+        scrolled.set_child(view)
+        box.append(scrolled)
+        dialog.set_extra_child(box)
+
+        def on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response != "save":
+                return
+            start = buf.get_start_iter()
+            end = buf.get_end_iter()
+            text = buf.get_text(start, end, False)
+            try:
+                self._services.profiles.update(profile_id, info=text)
+            except ValueError as exc:
+                if self._on_toast:
+                    self._on_toast(str(exc))
+                return
+            if self._on_toast:
+                self._on_toast("Path info saved")
+            # Re-open info so the user sees the result
+            self._on_info()
+
+        dialog.connect("response", on_response)
+        dialog.present()
 
     def _on_primary(self, *_a) -> None:
         st = self._services.core.status()
@@ -291,6 +404,13 @@ class HomePage(Gtk.Box):
         else:
             tag = "ready" if ready.ok else "incomplete"
             self._profile_label.set_text(f"{profile.name} · {tag} · planned")
+        # Info is always useful (explains empty state too).
+        self._info_btn.set_sensitive(True)
+        self._info_btn.set_tooltip_text(
+            f"What does “{profile.name}” do?"
+            if profile is not None
+            else "What does this path do?"
+        )
 
         if active or st.state == CoreState.CONNECTING:
             self._primary.set_label("Disconnect")

@@ -46,6 +46,9 @@ class Profile:
     hops: list[Hop] = field(default_factory=list)
     notes: str = ""
     favorite: bool = False
+    # User-editable dashboard “i” text. Empty → built-in default (if known id)
+    # or “Custom configuration.”
+    info: str = ""
 
     def hop_kinds(self) -> list[str]:
         return [h.kind for h in self.hops]
@@ -60,6 +63,7 @@ class Profile:
             "summary": self.summary,
             "notes": self.notes,
             "favorite": self.favorite,
+            "info": self.info,
             "hops": [
                 {"kind": h.kind, "backend_id": h.backend_id} for h in self.hops
             ],
@@ -93,6 +97,7 @@ def _parse_profile(item: dict) -> Profile | None:
         hops=hops,
         notes=str(item.get("notes", "")),
         favorite=bool(item.get("favorite", False)),
+        info=str(item.get("info", "")),
     )
 
 
@@ -185,6 +190,7 @@ def _default_profiles() -> list[Profile]:
             hops=[Hop(h.kind, h.backend_id) for h in p.hops],
             notes=p.notes,
             favorite=p.favorite,
+            info=p.info,
         )
         for p in DEFAULT_PROFILES
     ]
@@ -268,6 +274,7 @@ class ProfileStore:
         hops: list[Hop] | list[dict] | list[str] | None = None,
         notes: str = "",
         favorite: bool = False,
+        info: str = "",
     ) -> Profile:
         name = name.strip()
         if not name:
@@ -287,6 +294,7 @@ class ProfileStore:
             hops=parsed,
             notes=notes.strip(),
             favorite=favorite,
+            info=info.strip(),
         )
         self._profiles.append(profile)
         self.save()
@@ -318,6 +326,8 @@ class ProfileStore:
             profile.notes = str(fields["notes"]).strip()
         if "favorite" in fields:
             profile.favorite = bool(fields["favorite"])
+        if "info" in fields:
+            profile.info = str(fields["info"]).strip()
         self.save()
         return profile
 

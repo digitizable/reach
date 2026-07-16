@@ -84,7 +84,7 @@ The home screen warns when a profile uses Mullvad app SOCKS in a way that confli
 
 **Mullvad → local Tor:** the core does **not** SOCKS-nest `10.64.0.1` into `127.0.0.1:9050` (that dials loopback on the remote side and fails). Mullvad stays the full-tunnel underlay; Spectre dials system Tor. Traffic is still Host → Mullvad → Tor. Requires **spectred ≥ 0.3.4** for underlay routing, **≥ 0.3.6** so local SOCKS does not abort slow Tor circuit builds, and **≥ 0.3.7** so system-routing DNS uses Tor SOCKS RESOLVE (public DNS over TCP `:53` through Tor is blocked by most exits — browsers could not resolve names).
 
-**Hop composition is strict (desktop + spectred ≥ 0.3.9):** invalid nestings are blocked (e.g. REALITY → Mullvad app SOCKS). Mullvad app SOCKS may only be **first** (optional underlay before Tor/REALITY). REALITY and local Tor must be **last**. Self-check: [anguish.sh REALITY check](https://anguish.sh/reality-check).
+**Hop composition is strict (desktop + spectred ≥ 0.3.9):** invalid nestings are blocked (e.g. REALITY → Mullvad app SOCKS). Mullvad app SOCKS may only be **first** (optional underlay before Tor/REALITY). REALITY and local Tor must be **last**. Self-check (operator node only): [anguish.sh personal REALITY check](https://anguish.sh/personal/reality-check).
 
 Structural checks (backend bound, enabled, complete) always run; list “ready” tags stay structural-only so scrolling Profiles stays snappy.
 
