@@ -49,7 +49,7 @@ class Backend:
 
     # --- VPN ---
     vpn_protocol: str = "WireGuard"
-    vpn_provider: str = ""  # e.g. Mullvad, Proton, custom
+    vpn_provider: str = ""  # optional label, e.g. Proton
     vpn_endpoint: str = ""  # host:port or region label
     vpn_config: str = ""  # config blob or path note (desktop-side draft)
 
@@ -165,17 +165,31 @@ def _tor_default_backend() -> Backend:
     )
 
 
+def draft_vpn_backend() -> Backend:
+    """Generic WireGuard draft so seed profiles can bind a VPN hop."""
+    return Backend(
+        id="vpn-primary",
+        kind="VPN",
+        name="Primary VPN",
+        enabled=True,
+        notes="Add a WireGuard .conf path (any provider) under Backends",
+        vpn_protocol="WireGuard",
+        vpn_provider="",
+        vpn_config="",
+    )
+
+
 def mullvad_socks_backend() -> Backend:
-    """Official Mullvad in-tunnel SOCKS hop (requires Mullvad app Connected)."""
+    """Optional: Mullvad app in-tunnel SOCKS (only needed if you use that hop)."""
     return Backend(
         id="mullvad-socks",
         kind="Proxy",
         name="Mullvad SOCKS",
         enabled=True,
         notes=(
-            "Official Mullvad integration: in-tunnel SOCKS at 10.64.0.1:1080. "
-            "Requires the Mullvad app/CLI Connected (Spectre can auto-connect). "
-            "System routing respects Mullvad split-tunnel exclusions."
+            "Optional Mullvad hop: in-tunnel SOCKS at 10.64.0.1:1080 while the "
+            "Mullvad app is Connected. Spectre can auto-manage the tunnel when "
+            "this backend is on the active path (Settings)."
         ),
         vpn_provider="Mullvad",
         proxy_protocol="SOCKS5",
@@ -193,8 +207,8 @@ def mullvad_wireguard_backend() -> Backend:
         enabled=False,
         notes=(
             "Optional: path to a Mullvad WireGuard .conf from your account. "
-            "Use when Spectre should own the tunnel (e.g. apps-only without the "
-            "Mullvad app). Disconnect the Mullvad app before using this hop."
+            "Use when Spectre should own the tunnel (e.g. apps-only without a "
+            "third-party VPN app)."
         ),
         vpn_protocol="WireGuard",
         vpn_provider="Mullvad",
@@ -203,10 +217,13 @@ def mullvad_wireguard_backend() -> Backend:
 
 
 def default_backend_templates() -> tuple[Backend, ...]:
-    """Default backends; Tor adapts to Whonix when detected."""
+    """Default backends; Tor adapts to Whonix when detected.
+
+    Mullvad is supported as an optional backend you can add — it is not seeded
+    so first-run does not look Mullvad-branded.
+    """
     return (
-        mullvad_socks_backend(),
-        mullvad_wireguard_backend(),
+        draft_vpn_backend(),
         Backend(
             id="reality-primary",
             kind="REALITY",

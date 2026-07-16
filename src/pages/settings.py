@@ -130,7 +130,7 @@ class SettingsPage(Gtk.Box):
 
         self._tray = Adw.SwitchRow(
             title="Show tray icon",
-            subtitle="Taskbar / panel applet (like Mullvad’s lock) for status and quick connect",
+            subtitle="Panel applet for status and quick Connect / Disconnect",
         )
         self._tray.set_active(self._cfg.tray_enabled)
         g.add(self._tray)
@@ -223,43 +223,59 @@ class SettingsPage(Gtk.Box):
         from core import mullvad as mv
 
         g = Adw.PreferencesGroup()
-        g.set_title("Mullvad VPN")
+        g.set_title("Optional: Mullvad")
         g.set_description(
-            "Official integration with the Mullvad Linux app/CLI. "
-            "Spectre does not replace Mullvad — it can start the tunnel for "
-            "SOCKS hops and respects split-tunnel exclusions in system routing."
+            "Only relevant if a path hop uses Mullvad’s in-tunnel SOCKS "
+            "(10.64.0.1). Other providers use a normal VPN/Proxy backend — "
+            "you can ignore this section."
         )
 
         st = mv.probe()
+        # Avoid a loud “Disconnected” when the CLI is present but unused.
+        if not st.available:
+            status_sub = "CLI not installed — integration inactive"
+        elif st.connected:
+            status_sub = st.summary
+        else:
+            status_sub = "CLI installed · idle (not used unless a hop needs it)"
         self._mv_status = Adw.ActionRow(
-            title="Status",
-            subtitle=st.summary,
+            title="CLI status",
+            subtitle=status_sub,
         )
         g.add(self._mv_status)
 
         self._mv_auto = Adw.SwitchRow(
-            title="Manage Mullvad with Connect/Disconnect",
-            subtitle="When a path uses Mullvad tunnel SOCKS (10.64.0.1): "
-            "mullvad connect before Spectre Connect, and mullvad disconnect "
-            "when you Disconnect Spectre",
+            title="Auto-manage when path needs it",
+            subtitle="If the active path uses Mullvad SOCKS: connect the "
+            "Mullvad app before Spectre Connect, and disconnect it with "
+            "Spectre Disconnect. No effect for other paths.",
         )
         self._mv_auto.set_active(self._cfg.mullvad_auto_connect)
         g.add(self._mv_auto)
 
-        row = Adw.ActionRow(title="Tunnel control")
-        row.set_subtitle("Uses the system mullvad CLI")
+        row = Adw.ActionRow(title="Manual tunnel control")
+        row.set_subtitle("Requires the mullvad CLI in PATH")
         btn_on = Gtk.Button(label="Connect")
         btn_on.set_valign(Gtk.Align.CENTER)
         btn_on.add_css_class("suggested-action")
+        btn_on.set_sensitive(st.available)
         btn_on.connect("clicked", self._on_mullvad_connect)
         row.add_suffix(btn_on)
         btn_off = Gtk.Button(label="Disconnect")
         btn_off.set_valign(Gtk.Align.CENTER)
         btn_off.add_css_class("flat")
+        btn_off.set_sensitive(st.available)
         btn_off.connect("clicked", self._on_mullvad_disconnect)
         row.add_suffix(btn_off)
         g.add(row)
         return g
+
+    def _mv_status_subtitle(self, st) -> str:
+        if not st.available:
+            return "CLI not installed — integration inactive"
+        if st.connected:
+            return st.summary
+        return "CLI installed · idle (not used unless a hop needs it)"
 
     def _on_mullvad_connect(self, *_a) -> None:
         from core import mullvad as mv
@@ -268,7 +284,7 @@ class SettingsPage(Gtk.Box):
             self._on_toast("Connecting Mullvad…")
         st = mv.ensure_connected(timeout_sec=45.0)
         if hasattr(self, "_mv_status"):
-            self._mv_status.set_subtitle(st.summary)
+            self._mv_status.set_subtitle(self._mv_status_subtitle(st))
         if self._on_toast:
             self._on_toast(st.summary if st.ready_for_socks_hop else (st.error or st.summary))
 
@@ -278,7 +294,7 @@ class SettingsPage(Gtk.Box):
         ok, msg = mv.disconnect()
         st = mv.probe()
         if hasattr(self, "_mv_status"):
-            self._mv_status.set_subtitle(st.summary)
+            self._mv_status.set_subtitle(self._mv_status_subtitle(st))
         if self._on_toast:
             self._on_toast(msg if ok else (st.error or msg))
 
@@ -296,15 +312,17 @@ class SettingsPage(Gtk.Box):
             Gtk.StringList.new(
                 [
                     "Entire system (default)",
-                    "Selected apps only",
+                    "Launched apps / SOCKS only",
                 ]
             )
         )
         mode = (self._cfg.routing_mode or "system").lower()
         self._routing.set_selected(1 if mode == "apps" else 0)
         self._routing.set_subtitle(
-            "System: whole machine via Spectre. Apps-only: only Apps/SOCKS. "
-            "Note: Mullvad app cannot include-only apps (exclude-only split tunnel)."
+            "Entire system (recommended): all traffic via Spectre after Connect. "
+            "Launched apps only: clearnet by default; only Apps → Launch and "
+            "manual SOCKS clients use the path. Apps is a launcher, not an "
+            "include/exclude list."
         )
         g.add(self._routing)
 

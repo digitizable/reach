@@ -10,11 +10,14 @@ from app_config import project_root
 
 _ICON_SIZE = 18
 
-# Custom multicolor marks (not recolored by CSS).
+# Custom brand marks (not recolored by CSS).
 _ASSET_LOGOS: tuple[tuple[tuple[str, ...], str, str], ...] = (
-    # hop name needles → asset filename, css class
+    # hop/label needles → asset filename, css class
     (("tor",), "tor.svg", "path-node-icon-tor"),
     (("reality", "xray", "xtls", "vless"), "reality.svg", "path-node-icon-reality"),
+    # White monochrome Mullvad gopher, no circle (path icons only).
+    # Prefer PNG: full Inkscape SVG can fail GdkPixbuf; rsvg-rendered PNG is reliable.
+    (("mullvad",), "mullvad.png", "path-node-icon-mullvad"),
 )
 
 
@@ -41,14 +44,25 @@ def _icon_for_hop(name: str) -> str:
     return "network-transmit-receive-symbolic"
 
 
-def _asset_for_hop(name: str) -> tuple[Path, str] | None:
-    key = name.strip().lower()
+def _asset_for_hop(*names: str) -> tuple[Path, str] | None:
+    """Match brand marks against hop kind and/or backend label."""
     assets = project_root() / "data" / "assets"
+    key = " ".join(n.strip().lower() for n in names if n and n.strip())
+    if not key:
+        return None
     for needles, filename, css in _ASSET_LOGOS:
         if any(n in key for n in needles):
             path = assets / filename
             if path.is_file():
                 return path, css
+            # SVG fallback if PNG missing (or vice versa)
+            alt = assets / (
+                filename.replace(".png", ".svg")
+                if filename.endswith(".png")
+                else filename.replace(".svg", ".png")
+            )
+            if alt.is_file():
+                return alt, css
     return None
 
 
@@ -83,10 +97,10 @@ def _image_from_asset(path: Path, css_extra: str) -> Gtk.Image | None:
         return None
 
 
-def _image_for(title: str, *, kind: str) -> Gtk.Image:
-    """Symbolic icon, or project marks for Tor / REALITY (Xray)."""
+def _image_for(title: str, *, kind: str, also: str = "") -> Gtk.Image:
+    """Symbolic icon, or brand marks for Tor / REALITY / Mullvad."""
     if kind != "you":
-        asset = _asset_for_hop(title)
+        asset = _asset_for_hop(title, also)
         if asset is not None:
             img = _image_from_asset(asset[0], asset[1])
             if img is not None:
@@ -171,29 +185,26 @@ def path_graph(
             kind = "exit"
         else:
             kind = "hop"
-        # Icon from hop kind; label may be backend name
+        # Label may be backend name (e.g. "Mullvad SOCKS"); hop is kind (Proxy/VPN).
         label = hop
         if labels is not None and i < len(labels) and labels[i]:
             label = labels[i]
-        # Use hop kind for asset/icon matching when label is a backend name
-        node = _node(label, live=live, kind=kind)
-        # Re-icon from hop kind if label diverged
-        if labels is not None and label != hop:
-            # rebuild icon via kind-aware title for assets: pass hop for image
-            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-            col.add_css_class("path-node")
-            col.add_css_class(f"path-kind-{kind}")
-            if live:
-                col.add_css_class("path-live")
-            col.set_halign(Gtk.Align.CENTER)
-            col.append(_image_for(hop, kind=kind))
-            lab = Gtk.Label(label=label)
-            lab.add_css_class("path-node-label")
-            lab.set_halign(Gtk.Align.CENTER)
-            lab.set_max_width_chars(10)
-            col.append(lab)
-            node = col
-        row.append(node)
+        # Icon: match brand marks on kind *and* backend name (Mullvad, Tor, …).
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        col.add_css_class("path-node")
+        col.add_css_class(f"path-kind-{kind}")
+        if live:
+            col.add_css_class("path-live")
+        col.set_halign(Gtk.Align.CENTER)
+        col.set_valign(Gtk.Align.CENTER)
+        col.set_hexpand(False)
+        col.append(_image_for(hop, kind=kind, also=label))
+        lab = Gtk.Label(label=label)
+        lab.add_css_class("path-node-label")
+        lab.set_halign(Gtk.Align.CENTER)
+        lab.set_max_width_chars(10)
+        col.append(lab)
+        row.append(col)
 
     root.append(row)
     return root

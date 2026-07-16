@@ -224,14 +224,15 @@ button.nav-btn.nav-btn-active {
   opacity: 1;
 }
 
-/* Brand marks (Tor onion, Project X / Xray) — don't recolor */
+/* Brand marks (Tor onion, Project X / Xray, white Mullvad) — don't recolor */
 .path-node-icon-tor,
-.path-node-icon-reality {
+.path-node-icon-reality,
+.path-node-icon-mullvad {
   color: unset;
   -gtk-icon-filter: none;
 }
 
-.path-live .path-node-icon:not(.path-node-icon-tor):not(.path-node-icon-reality) {
+.path-live .path-node-icon:not(.path-node-icon-tor):not(.path-node-icon-reality):not(.path-node-icon-mullvad) {
   color: #9fd4a8;
 }
 

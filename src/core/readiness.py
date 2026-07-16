@@ -87,7 +87,7 @@ def routing_warnings(
 
     if mode == "apps":
         warnings.append(
-            "Mullvad app SOCKS cannot do “selected apps only.” "
+            "Mullvad app SOCKS cannot do “launched apps only.” "
             "While Mullvad is Connected the whole system is already on Mullvad. "
             "For true apps-only: disconnect Mullvad app, use a WireGuard .conf VPN hop."
         )
@@ -289,7 +289,7 @@ def live_policy_issues(*, routing_mode: str, kill_switch: bool) -> list[str]:
     if mode == "system" and not _spectre_nft_ready():
         issues.append(
             "System routing needs the Spectre nft helper — run once: "
-            "spectre setup-killswitch  (or set Routing mode to Selected apps only)"
+            "spectre setup-killswitch  (or set Routing mode to Launched apps / SOCKS only)"
         )
     _ = kill_switch  # reserved: apps-mode KS is ignored by core
     return issues

@@ -121,7 +121,7 @@ class BackendEditorDialog(Adw.MessageDialog):
             self._kind_fields.append(self._field("Protocol", self._vpn_proto))
 
             self._vpn_provider = Gtk.Entry()
-            self._vpn_provider.set_placeholder_text("Mullvad, Proton, custom…")
+            self._vpn_provider.set_placeholder_text("Provider name (optional)")
             self._vpn_provider.set_text(b.vpn_provider if b else "")
             self._kind_fields.append(self._field("Provider", self._vpn_provider))
 

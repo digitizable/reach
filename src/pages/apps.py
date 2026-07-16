@@ -1,4 +1,11 @@
-"""Apps — system-discovered applications + custom commands, launch via Spectre."""
+"""Apps — launch installed/custom apps through the active Spectre path.
+
+This page is a *launcher*, not a split-tunnel membership list:
+- Entire system routing: machine already uses Spectre after Connect; Launch
+  still injects SOCKS so the process prefers the path.
+- Launched apps / SOCKS only: only what you Launch (or point at local SOCKS)
+  uses the path; the rest of the OS stays clearnet.
+"""
 
 from __future__ import annotations
 
@@ -46,13 +53,8 @@ class AppsPage(Gtk.Box):
         body.add_css_class("page-body")
         body.set_valign(Gtk.Align.START)
 
-        self._hint = Gtk.Label(
-            label="Installed apps are detected automatically. In “Selected apps only” "
-            "routing mode, Launch sends them through Spectre SOCKS. In system mode, "
-            "the whole machine already uses the path after Connect.",
-            wrap=True,
-            xalign=0,
-        )
+        # Mode-aware: this page is a launcher, not an include/exclude membership list.
+        self._hint = Gtk.Label(label="", wrap=True, xalign=0)
         self._hint.add_css_class("muted")
         body.append(self._hint)
 
@@ -91,9 +93,12 @@ class AppsPage(Gtk.Box):
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         actions.set_halign(Gtk.Align.END)
 
-        self._launch_btn = Gtk.Button(label="Launch")
+        self._launch_btn = Gtk.Button(label="Launch via Spectre")
         self._launch_btn.add_css_class("suggested-action")
         self._launch_btn.set_sensitive(False)
+        self._launch_btn.set_tooltip_text(
+            "Start the selected app through the active Spectre SOCKS path"
+        )
         self._launch_btn.connect("clicked", self._on_launch)
         actions.append(self._launch_btn)
 
@@ -134,14 +139,39 @@ class AppsPage(Gtk.Box):
         n = self._services.apps.count_system()
         self._toast(f"Found {n} installed application{'s' if n != 1 else ''}")
 
+    def _routing_mode(self) -> str:
+        mode = (self._services.config.routing_mode or "system").strip().lower()
+        return "apps" if mode == "apps" else "system"
+
+    def _refresh_hint(self) -> None:
+        """Explain launcher role; copy depends on Settings → Routing mode."""
+        if self._routing_mode() == "apps":
+            self._hint.set_text(
+                "This is a launcher, not a checklist of apps on the path. "
+                "Routing is “Launched apps / SOCKS only”: only apps you Launch "
+                "here (or other clients pointed at Spectre SOCKS) use the path — "
+                "everything else stays on clearnet. Prefer Entire system when you "
+                "want the whole machine protected."
+            )
+        else:
+            self._hint.set_text(
+                "This is a launcher, not a split-tunnel exception list. "
+                "Routing is Entire system: after Connect, the whole machine uses "
+                "Spectre. Launch still starts an app with SOCKS set so it prefers "
+                "the path — selecting an app does not exclude it from the tunnel."
+            )
+
     def refresh_status_line(self) -> None:
-        """Update path/count line without rebuilding the app list (fast page switch)."""
+        """Update hint + path/count line without rebuilding the app list."""
+        self._refresh_hint()
         st = self._services.core.status()
         n_sys = self._services.apps.count_system()
         n_custom = len(self._services.apps.list(include_system=False))
+        mode = "apps only" if self._routing_mode() == "apps" else "system routing"
         base = f"{n_sys} installed"
         if n_custom:
             base += f" · {n_custom} custom"
+        base += f" · {mode}"
         if st.state == CoreState.CONNECTED and st.local_proxy:
             self._status.set_text(f"{base} · path up · SOCKS {st.local_proxy}")
         elif st.state == CoreState.CONNECTED:
@@ -264,7 +294,10 @@ class AppsPage(Gtk.Box):
         dialog = Adw.MessageDialog(
             transient_for=self._parent_window,
             heading="Add custom command",
-            body="For tools without a desktop entry. Launch uses the active Spectre path.",
+            body=(
+                "For tools without a desktop entry. "
+                "Launch via Spectre starts them through the active path SOCKS."
+            ),
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("add", "Add")
@@ -278,7 +311,7 @@ class AppsPage(Gtk.Box):
         name.set_placeholder_text("Display name")
         box.append(name)
         cmd = Gtk.Entry()
-        cmd.set_placeholder_text("Command (e.g. curl https://am.i.mullvad.net/json)")
+        cmd.set_placeholder_text("Command (e.g. curl https://example.com)")
         box.append(cmd)
         mode = Gtk.CheckButton(label="Use proxychains (for apps that ignore proxy env)")
         box.append(mode)

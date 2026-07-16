@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- White monochrome Mullvad VPN gopher (no circle).
+     Geometry from Mullvad-no-circle_201X.svg (logopedia);
+     all fills set to #ffffff for Spectre Desktop path icons. -->
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   viewBox="0 0 150.35104 159.27734" width="150.35104"
+   height="159.27734"
+   id="svg5151"
+   version="1.1"
+   inkscape:version="0.48.4 r9939"
+   sodipodi:docname="New document 64">
+  <defs
+     id="defs5153">
+    <clipPath
+       clipPathUnits="userSpaceOnUse"
+       id="clipPath3496-3-20-8-9-4">
+      <path
+         inkscape:connector-curvature="0"
+         d="M 0,911 960,911 960,0 0,0 0,911 z"
+         id="path3498-1-6-5-3-6" />
+    </clipPath>
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.979899"
+     inkscape:cx="135.19908"
+     inkscape:cy="42.005238"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0"
+     inkscape:window-width="1078"
+     inkscape:window-height="1899"
+     inkscape:window-x="0"
+     inkscape:window-y="19"
+     inkscape:window-maximized="0" />
+  <metadata
+     id="metadata5156">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-50.538762,-41.29494)">
+    <g
+       id="g6031"
+       transform="matrix(-0.47506949,0,0,0.47506949,333.38752,-383.08358)"
+       inkscape:export-filename="/home/ibaton/code/mullvadweb/static/images/mullvad-nocirc.png"
+       inkscape:export-xdpi="135.6125"
+       inkscape:export-ydpi="135.6125">
+      <g
+         inkscape:export-ydpi="11.879233"
+         inkscape:export-xdpi="11.879233"
+         inkscape:export-filename="/home/ibaton/code/mullvadweb/mullvadweb/content/static/images/logo.png"
+         transform="matrix(2.3521533,0,0,-2.3521533,582.82347,1000.2654)"
+         id="g3376-5-7">
+        <path
+           id="path3378-6-2"
+           style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           d="m 0,0 5.34,-10.8 -7.14,9.98 c -0.02,-0.049 -0.04,-0.1 -0.059,-0.15 l 0.509,-14.219 -2.009,10.82 C -9.32,-16.43 -23.87,-33.119 -37.21,-42 c -1.44,-0.96 -2.569,-1.979 -3.44,-3.05 -1.68,-0.649 -3.42,-1.03 -5.15,-1.319 -0.91,-0.16 -1.841,-0.231 -2.75,-0.311 -0.91,-0.059 -1.83,-0.09 -2.74,-0.07 -0.909,0.021 -1.81,0.061 -2.71,0.15 -0.91,0.08 -1.8,0.22 -2.689,0.371 -0.891,0.16 -1.771,0.33 -2.641,0.559 -0.869,0.231 -1.74,0.471 -2.59,0.771 -0.85,0.259 -1.7,0.58 -2.529,0.91 -0.841,0.34 -1.66,0.699 -2.471,1.09 -0.81,0.41 -1.62,0.79 -2.41,1.229 -0.811,0.4 -1.58,0.87 -2.38,1.311 -0.81,0.41 -1.55,0.939 -2.351,1.38 -0.789,0.45 -1.539,0.979 -2.339,1.429 -0.77,0.5 -1.539,1 -2.34,1.48 -0.77,0.51 -1.571,1 -2.39,1.47 l -0.74,0.44 -0.39,-0.26 -5.381,-3.559 5.431,1.409 c 0.511,-0.61 1.05,-1.209 1.61,-1.789 0.68,-0.691 1.401,-1.35 2.12,-1.991 0.75,-0.629 1.51,-1.23 2.291,-1.82 0.798,-0.559 1.599,-1.13 2.439,-1.63 1.66,-1.04 3.42,-1.929 5.25,-2.67 0.91,-0.37 1.84,-0.71 2.77,-1.019 0.94,-0.311 1.88,-0.601 2.85,-0.83 0.95,-0.241 1.931,-0.41 2.9,-0.571 0.98,-0.15 1.96,-0.25 2.94,-0.339 1.97,-0.101 3.95,-0.05 5.89,0.2 0.98,0.13 1.94,0.319 2.89,0.54 0.94,0.229 1.88,0.5 2.79,0.84 1.6,0.569 3.15,1.309 4.55,2.259 -0.029,-0.03 -0.05,-0.059 -0.07,-0.089 0.051,0.04 0.08,0.07 0.08,0.07 0,0 5.15,-0.7 3.07,-4.57 -2.08,-3.851 -5.221,-3.51 -3.74,-8.05 0.01,-0.011 0.01,-0.011 0.01,-0.021 1.03,-2.399 2.509,-4.79 4.15,-7.03 3.391,-4.64 8.76,-8.69 8.231,-11.13 -24.364322,-29.98574 -79.19478,-25.81482 -100.021,0.931 0.319,3.87 6.39,5.719 10.649,15.16 -1.169,-0.36 -2.949,-0.901 -2.949,-0.83 0,0.069 5.08,8.26 5.25,9.08 l -3.25,-0.221 c 0,0 4.35,5.361 4.43,5.861 l -4.369,0.559 c 0,0 5.5,6.33 5.59,6.83 l -5.59,-0.889 6.119,7.379 -2.88,0 3.44,5 c 0.59,0.19 1.17,0.371 1.75,0.55 0.75,0.24 1.5,0.47 2.241,0.7 0.029,0.01 0.049,0.02 0.08,0.02 8.289,2.57 16.119,5 23.719,9.75 10.64,6.66 20.18,14.74 27.339,21.08 l 14.381,6.98 c 13.77,1.03 26.74,0.69 34.61,-0.87 l -5.06,8.67 7.74,-9.309 c 0.13,-0.031 0.25,-0.061 0.37,-0.1 0.18,0.219 0.31,0.569 0.31,0.569 l -0.53,11.46 2.44,-10.359 c 0.771,0.34 1.62,0.539 2.51,0.539 3.431,0 6.21,-2.779 6.21,-6.199 C 5.34,3.01 3.02,0.42 0,0"
+           inkscape:connector-curvature="0"
+           sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccccsccccccccccccccccccccccssc" />
+      </g>
+      <g
+         inkscape:export-ydpi="11.879233"
+         inkscape:export-xdpi="11.879233"
+         inkscape:export-filename="/home/ibaton/code/mullvadweb/mullvadweb/content/static/images/logo.png"
+         transform="matrix(2.3521533,0,0,-2.3521533,444.96307,953.33942)"
+         id="g3436-1-0">
+        <path
+           id="path3438-7-5"
+           style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           d="M 0,0 C -0.67,-1.7 -1.79,-2.93 -3.229,-3.55 -3.89,-3.85 -4.64,-4 -5.43,-4 c -3.61,0 -7.54,3.261 -9.559,7.931 -1.24,2.83 -1.651,5.819 -1.16,8.41 0.479,2.599 1.799,4.479 3.71,5.309 0.7,0.3 1.45,0.451 2.21,0.451 3.599,0 7.53,-3.26 9.57,-7.93 C 0.87,6.64 1.12,2.841 0,0 m 1.021,-0.14 c 1.11,3.05 0.839,7.03 -0.76,10.71 -2.221,5.111 -6.441,8.54 -10.49,8.54 -0.821,0 -1.6,-0.15 -2.34,-0.429 -2.34,2.099 -4.991,3.819 -7.951,5 -16.429,6.529 -40.459,-5.141 -46.639,-21.291 -2.971,-7.789 -2.061,-16.4 0.479,-24.161 2.111,-6.419 9.68,-15.669 6.88,-22.649 1.151,0.271 24.62,7.63 31.191,11.73 10.469,6.56 19.92,14.59 26.99,20.85 l 0.21,0.2 23.79,11.54 0.09,-0.19 c 0.279,0.141 0.559,0.269 0.84,0.41 -3.43,0 -16.47,-1.519 -22.29,-0.26"
+           inkscape:connector-curvature="0" />
+      </g>
+      <g
+         inkscape:export-ydpi="11.879233"
+         inkscape:export-xdpi="11.879233"
+         inkscape:export-filename="/home/ibaton/code/mullvadweb/mullvadweb/content/static/images/logo.png"
+         id="g3492-4-2"
+         transform="matrix(2.3521533,0,0,-2.3521533,-1255.1957,2649.9469)">
+        <g
+           clip-path="url(#clipPath3496-3-20-8-9-4)"
+           id="g3494-06-7">
+          <g
+             transform="translate(717.3799,719.2998)"
+             id="g3500-8-8">
+            <path
+               id="path3502-4-8"
+               style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+               d="m 0,0 c -2.787,0 -6.034,2.829 -7.722,6.728 -1.081,2.468 -1.448,5.043 -1.035,7.248 0.359,1.921 1.261,3.283 2.543,3.836 0.445,0.191 0.922,0.289 1.414,0.289 2.779,0 6.032,-2.831 7.734,-6.731 C 4.26,8.319 4.497,5.091 3.569,2.737 3.098,1.537 2.354,0.69 1.416,0.289 0.981,0.095 0.51,0 0,0"
+               inkscape:connector-curvature="0" />
+          </g>
+          <g
+             transform="translate(774.3555,707.5205)"
+             id="g3504-9-5">
+            <path
+               id="path3506-4-0"
+               style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+               d="M 0,0 C 0,3.425 2.775,6.203 6.199,6.203 9.623,6.203 12.4,3.425 12.4,0 12.4,-3.424 9.623,-6.199 6.199,-6.199 2.775,-6.199 0,-3.424 0,0"
+               inkscape:connector-curvature="0" />
+          </g>
+          <g
+             transform="matrix(1.7705544,0,0,1.7705544,719.32627,712.51098)"
+             id="g3500-8-8-7">
+            <path
+               sodipodi:type="arc"
+               style="opacity:0.65963302;fill:#ffffff;fill-opacity:1;stroke:none"
+               id="path6396"
+               sodipodi:cx="415.9303"
+               sodipodi:cy="101.66472"
+               sodipodi:rx="7.7024131"
+               sodipodi:ry="12.462767"
+               d="m 423.63271,101.66472 c 0,6.88299 -3.44849,12.46277 -7.70241,12.46277 -4.25393,0 -7.70242,-5.57978 -7.70242,-12.46277 0,-6.882997 3.44849,-12.462768 7.70242,-12.462768 4.25392,0 7.70241,5.579771 7.70241,12.462768 z"
+               transform="matrix(-0.72226594,-0.2959106,0.2463702,-0.6013465,272.88454,193.22933)" />
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

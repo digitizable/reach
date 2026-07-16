@@ -222,13 +222,16 @@ class HomePage(Gtk.Box):
                 if socks and port:
                     detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
-        # Prefer Mullvad block from core status (cached server-side) — avoid a
-        # second `mullvad status` subprocess on every home refresh / page switch.
-        mv = getattr(st, "mullvad", None)
-        if isinstance(mv, dict) and mv.get("available") and mv.get("summary"):
-            summary = str(mv.get("summary") or "")
-            if summary and summary not in detail:
-                detail = f"{detail} · {summary}" if detail else summary
+        # Only surface Mullvad status when the active path actually uses it.
+        # Core may always report CLI state; that must not clutter Tor/VPN/etc.
+        from core.readiness import profile_uses_mullvad_app_socks
+
+        if profile_uses_mullvad_app_socks(profile, self._services.backends):
+            mv = getattr(st, "mullvad", None)
+            if isinstance(mv, dict) and mv.get("available") and mv.get("summary"):
+                summary = str(mv.get("summary") or "")
+                if summary and summary not in detail:
+                    detail = f"{detail} · {summary}" if detail else summary
 
         for k in ("offline", "idle", "busy", "live", "unknown", "bad"):
             self._dot.remove_css_class(f"state-{k}")
