@@ -202,13 +202,42 @@ def find_mullvad_exclude() -> str | None:
 
 
 def probe_sudo_nopasswd(*, timeout_sec: float = 1.5) -> bool:
-    """True if ``sudo -n true`` succeeds (no password prompt). Non-destructive."""
+    """True if generic ``sudo -n true`` works (broad NOPASSWD).
+
+    Prefer :func:`probe_clearnet_sudo` for Exclude — most installs only grant
+    passwordless sudo for ``clearnet-run`` / ``clearnet-netns``, not ``true``.
+    """
     sudo = shutil.which("sudo")
     if not sudo:
         return False
     try:
         r = subprocess.run(  # noqa: S603
             [sudo, "-n", "true"],
+            capture_output=True,
+            timeout=timeout_sec,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0
+
+
+def probe_clearnet_sudo(
+    clearnet_run: str | None,
+    *,
+    timeout_sec: float = 3.0,
+) -> bool:
+    """True if ``sudo -n <clearnet-run> -- /bin/true`` succeeds.
+
+    Matches real Exclude launches and the spectre-clearnet sudoers drop-in
+    (NOPASSWD only for clearnet helpers, not arbitrary commands).
+    """
+    sudo = shutil.which("sudo")
+    if not sudo or not clearnet_run:
+        return False
+    try:
+        r = subprocess.run(  # noqa: S603
+            [sudo, "-n", clearnet_run, "--", "/bin/true"],
             capture_output=True,
             timeout=timeout_sec,
             check=False,
@@ -227,7 +256,7 @@ def probe_exclude_tooling(*, check_sudo: bool = True) -> ExcludeTooling:
         netns_name=clearnet_ns_name(),
     )
     if check_sudo and t.clearnet_run and t.netns_ready:
-        t.sudo_nopasswd = probe_sudo_nopasswd()
+        t.sudo_nopasswd = probe_clearnet_sudo(t.clearnet_run)
     elif t.clearnet_run:
         t.sudo_nopasswd = False if check_sudo else None
     return t
@@ -478,6 +507,103 @@ _MOZILLA_COPY_IGNORE_NAMES = frozenset(
 )
 _SPECTRE_PROFILE_META = ".spectre-profile-source"
 
+# DoH for exclude Firefox: TRR-only via Cloudflare IP URI so bootstrap never
+# hits ISP/LAN resolvers (and never Mullvad 10.64.0.1 on the host).
+_EXCLUDE_DOH_URI = "https://1.1.1.1/dns-query"
+_EXCLUDE_DOH_MARKER_BEGIN = "// BEGIN spectre-desktop exclude DoH"
+_EXCLUDE_DOH_MARKER_END = "// END spectre-desktop exclude DoH"
+_EXCLUDE_DOH_USER_JS_BLOCK = f"""
+{_EXCLUDE_DOH_MARKER_BEGIN}
+// Clearnet exclude: force DNS over HTTPS (not ISP / not Mullvad tunnel DNS).
+// mode 3 = TRR only; URI uses Cloudflare anycast IP so no system DNS bootstrap.
+user_pref("network.trr.mode", 3);
+user_pref("network.trr.uri", "{_EXCLUDE_DOH_URI}");
+user_pref("network.trr.custom_uri", "{_EXCLUDE_DOH_URI}");
+user_pref("network.trr.default_provider_uri", "{_EXCLUDE_DOH_URI}");
+user_pref("network.trr.bootstrapAddress", "1.1.1.1");
+user_pref("network.trr.confirmationNS", "skip");
+user_pref("network.trr.excluded-domains", "localhost,local,lan,.local,.lan");
+user_pref("doh-rollout.enabled", false);
+user_pref("doh-rollout.disable-heuristics", true);
+user_pref("doh-rollout.uri", "");
+{_EXCLUDE_DOH_MARKER_END}
+"""
+
+
+def apply_exclude_mozilla_doh(profile: Path) -> None:
+    """Force DoH on a Spectre exclude Mozilla profile (user.js + prefs.js).
+
+    Safe to call every launch. Appends/replaces a marked block at the end of
+    ``user.js`` so it wins over arkenfox/user copies that set ``trr.mode = 5``.
+    """
+    if not profile.is_dir():
+        return
+    block = _EXCLUDE_DOH_USER_JS_BLOCK.strip() + "\n"
+    user_js = profile / "user.js"
+    try:
+        existing = ""
+        if user_js.is_file():
+            existing = user_js.read_text(encoding="utf-8", errors="replace")
+        if _EXCLUDE_DOH_MARKER_BEGIN in existing:
+            start = existing.index(_EXCLUDE_DOH_MARKER_BEGIN)
+            end = existing.find(_EXCLUDE_DOH_MARKER_END, start)
+            if end >= 0:
+                end += len(_EXCLUDE_DOH_MARKER_END)
+                # drop trailing newlines after old block
+                while end < len(existing) and existing[end] in "\r\n":
+                    end += 1
+                existing = (existing[:start].rstrip() + "\n\n" + existing[end:].lstrip())
+            else:
+                existing = existing[:start].rstrip() + "\n"
+        text = existing.rstrip() + ("\n\n" if existing.strip() else "") + block
+        user_js.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+    # Also pin prefs.js so about:config matches before the first user.js apply
+    # (and if something rewrites user.js mid-session next start still works).
+    prefs_js = profile / "prefs.js"
+    try:
+        lines: list[str] = []
+        if prefs_js.is_file():
+            lines = prefs_js.read_text(encoding="utf-8", errors="replace").splitlines()
+        drop_keys = (
+            "network.trr.mode",
+            "network.trr.uri",
+            "network.trr.custom_uri",
+            "network.trr.default_provider_uri",
+            "network.trr.bootstrapAddress",
+            "network.trr.confirmationNS",
+            "network.trr.excluded-domains",
+            "doh-rollout.enabled",
+            "doh-rollout.disable-heuristics",
+            "doh-rollout.uri",
+        )
+
+        def _is_drop(line: str) -> bool:
+            for k in drop_keys:
+                if f'user_pref("{k}"' in line or f"user_pref('{k}'" in line:
+                    return True
+            return False
+
+        kept = [ln for ln in lines if not _is_drop(ln)]
+        additions = [
+            f'user_pref("network.trr.mode", 3);',
+            f'user_pref("network.trr.uri", "{_EXCLUDE_DOH_URI}");',
+            f'user_pref("network.trr.custom_uri", "{_EXCLUDE_DOH_URI}");',
+            f'user_pref("network.trr.default_provider_uri", "{_EXCLUDE_DOH_URI}");',
+            f'user_pref("network.trr.bootstrapAddress", "1.1.1.1");',
+            f'user_pref("network.trr.confirmationNS", "skip");',
+            f'user_pref("network.trr.excluded-domains", "localhost,local,lan,.local,.lan");',
+            f'user_pref("doh-rollout.enabled", false);',
+            f'user_pref("doh-rollout.disable-heuristics", true);',
+            f'user_pref("doh-rollout.uri", "");',
+        ]
+        body = "\n".join(kept).rstrip() + "\n" + "\n".join(additions) + "\n"
+        prefs_js.write_text(body, encoding="utf-8")
+    except OSError:
+        pass
+
 
 def _mozilla_copy_ignore(directory: str, names: list[str]) -> set[str]:
     _ = directory
@@ -517,6 +643,9 @@ def ensure_spectre_mozilla_profile(
         note = "Spectre profile copy"
         if src_recorded:
             note = f"Spectre profile (from {Path(src_recorded).name})"
+        if tag == "exclude":
+            apply_exclude_mozilla_doh(dest)
+            note = f"{note} · DoH"
         return dest, note
 
     dest.mkdir(parents=True, exist_ok=True)
@@ -527,6 +656,8 @@ def ensure_spectre_mozilla_profile(
             meta.write_text("# no source profile found\n", encoding="utf-8")
         except OSError:
             pass
+        if tag == "exclude":
+            apply_exclude_mozilla_doh(dest)
         return dest, "Spectre profile (empty — no source found)"
 
     # Fresh clone from the user's default profile into Spectre-only storage.
@@ -573,8 +704,13 @@ def ensure_spectre_mozilla_profile(
             encoding="utf-8",
         )
     except OSError as exc:
+        if tag == "exclude":
+            apply_exclude_mozilla_doh(dest)
         return dest, f"Spectre profile (copy incomplete: {exc})"
 
+    if tag == "exclude":
+        apply_exclude_mozilla_doh(dest)
+        return dest, f"Spectre profile (copied from {source.name}) · DoH"
     return dest, f"Spectre profile (copied from {source.name})"
 
 

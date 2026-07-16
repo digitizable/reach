@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.12)
+## Status (0.3.13)
 
 Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, and core handoff for kill switch + system routing.
 
-**0.3.12:** Connect/Disconnect off the UI thread; tray quit no longer leaves zombie instances; open-lock tray icon cleanup; clearnet Check progress bar hides when done; refuse Connect if Desktop was launched inside the exclude netns. **0.3.11:** Exclude apps — clearnet **Check / Repair**. Pair with **clearnet-netns** from spectred ≥ 0.3.12. **0.3.10:** normal exclude icons.
+**0.3.13:** Exclude prefers clearnet-run when only helpers have passwordless sudo (not generic `sudo true`); Spectre’s exclude Firefox profile forces DNS over HTTPS (Cloudflare) so clearnet DNS is not ISP/Mullvad. **0.3.12:** responsive Connect/Disconnect, tray quit/SNI fixes, open-lock icon, progress bar hides when done. **0.3.11:** clearnet Check/Repair. Pair with **clearnet-netns** from spectred ≥ 0.3.12.
 
 ## What it is
 
