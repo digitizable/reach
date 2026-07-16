@@ -132,6 +132,7 @@ data/assets/                         # brand + Tor/REALITY marks
 
 ## Related
 
+- [Project page](https://anguish.sh/projects/spectre-desktop) — anguish.sh  
 - [Spectre core](https://github.com/digitizable/spectre) — `spectred` + CLI  
 
 ## Donate
