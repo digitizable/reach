@@ -96,7 +96,33 @@ def routing_warnings(
             "Mullvad app is full-tunnel when Connected; Spectre adds path/kill-switch "
             "on top. Connect Mullvad first, then Spectre."
         )
+
+    # Host → Mullvad → local Tor is not nested SOCKS (remote cannot dial 127.0.0.1).
+    if profile is not None and _profile_is_mullvad_then_local_tor(profile, backends):
+        warnings.append(
+            "Mullvad → local Tor: Mullvad stays the OS tunnel; Spectre dials Tor only "
+            "(cannot SOCKS-chain 10.64.0.1 into 127.0.0.1). Traffic is still Host → Mullvad → Tor."
+        )
     return warnings
+
+
+def _profile_is_mullvad_then_local_tor(
+    profile: Profile, backends: BackendStore
+) -> bool:
+    """True when path is Mullvad tunnel SOCKS followed later by local Tor."""
+    saw_mullvad = False
+    for hop in profile.hops:
+        b = backends.get(hop.backend_id) if hop.backend_id else None
+        if b is None:
+            continue
+        if is_mullvad_app_socks(b):
+            saw_mullvad = True
+            continue
+        if saw_mullvad and hop.kind == "Tor":
+            host = (b.tor_socks_host or "").strip().lower()
+            if b.tor_use_system or host in ("", "127.0.0.1", "localhost", "::1"):
+                return True
+    return False
 
 
 # ── Live probes (fast, connect-time) ───────────────────────────────

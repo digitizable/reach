@@ -82,6 +82,8 @@ The home screen warns when a profile uses Mullvad app SOCKS in a way that confli
 | **REALITY** | Incomplete fields, `xray` missing, or server name won’t resolve |
 | **System routing** | `spectre-nft` helper not set up (`spectre setup-killswitch`) |
 
+**Mullvad → local Tor:** the core does **not** SOCKS-nest `10.64.0.1` into `127.0.0.1:9050` (that dials loopback on the remote side and fails). Mullvad stays the full-tunnel underlay; Spectre dials system Tor. Traffic is still Host → Mullvad → Tor. Requires **spectred ≥ 0.3.4**.
+
 Structural checks (backend bound, enabled, complete) always run; list “ready” tags stay structural-only so scrolling Profiles stays snappy.
 
 CLI:
