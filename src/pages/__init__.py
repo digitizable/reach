@@ -1,0 +1,1 @@
+"""Spectre Desktop pages."""
