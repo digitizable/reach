@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.4)
+## Status (0.3.5)
 
 Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing.
 
-**0.3.4 hotfix:** stop dashboard flicker between “Not connected” and “Core offline” (sticky last-good status, longer status timeout, offline debounce). **0.3.3:** live core status poll. **0.3.2:** Apps launch-session tracking; Mullvad→Tor core docs.
+**0.3.5:** Clear Stealth entry / REALITY → Mullvad app SOCKS copy (exit is REALITY server; pair with **spectred ≥ 0.3.8**). **0.3.4:** status flicker fix. **0.3.3:** live core poll.
 
 ## What it is
 
@@ -83,6 +83,8 @@ The home screen warns when a profile uses Mullvad app SOCKS in a way that confli
 | **System routing** | `spectre-nft` helper not set up (`spectre setup-killswitch`) |
 
 **Mullvad → local Tor:** the core does **not** SOCKS-nest `10.64.0.1` into `127.0.0.1:9050` (that dials loopback on the remote side and fails). Mullvad stays the full-tunnel underlay; Spectre dials system Tor. Traffic is still Host → Mullvad → Tor. Requires **spectred ≥ 0.3.4** for underlay routing, **≥ 0.3.6** so local SOCKS does not abort slow Tor circuit builds, and **≥ 0.3.7** so system-routing DNS uses Tor SOCKS RESOLVE (public DNS over TCP `:53` through Tor is blocked by most exits — browsers could not resolve names).
+
+**REALITY → Mullvad app SOCKS:** cannot nest `10.64.0.1` through REALITY (**spectred ≥ 0.3.8** dials REALITY only). Exit is the REALITY server — Mullvad Connection Check will not show a Mullvad exit. Self-check: [anguish.sh REALITY check](https://anguish.sh/projects/spectre-reality-check).
 
 Structural checks (backend bound, enabled, complete) always run; list “ready” tags stay structural-only so scrolling Profiles stays snappy.
 

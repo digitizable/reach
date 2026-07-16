@@ -103,6 +103,16 @@ def routing_warnings(
             "Mullvad → local Tor: Mullvad stays the OS tunnel; Spectre dials Tor only "
             "(cannot SOCKS-chain 10.64.0.1 into 127.0.0.1). Traffic is still Host → Mullvad → Tor."
         )
+
+    # REALITY (or other local hop) → Mullvad app SOCKS cannot nest into 10.64 through
+    # the REALITY exit. Core dials REALITY only; exit IP is the REALITY server.
+    if profile is not None and _profile_is_reality_then_mullvad(profile, backends):
+        warnings.append(
+            "REALITY → Mullvad app SOCKS: cannot nest 10.64.0.1 through REALITY. "
+            "Spectre dials REALITY only (keep Mullvad Connected as OS underlay if you want). "
+            "Exit is the REALITY server — Mullvad Connection Check will not show a Mullvad exit. "
+            "Sites hosted on that same VPS may fail (hairpin NAT)."
+        )
     return warnings
 
 
@@ -122,6 +132,23 @@ def _profile_is_mullvad_then_local_tor(
             host = (b.tor_socks_host or "").strip().lower()
             if b.tor_use_system or host in ("", "127.0.0.1", "localhost", "::1"):
                 return True
+    return False
+
+
+def _profile_is_reality_then_mullvad(
+    profile: Profile, backends: BackendStore
+) -> bool:
+    """True when a REALITY hop is later followed by Mullvad app SOCKS."""
+    saw_reality = False
+    for hop in profile.hops:
+        b = backends.get(hop.backend_id) if hop.backend_id else None
+        if b is None:
+            continue
+        if hop.kind == "REALITY":
+            saw_reality = True
+            continue
+        if saw_reality and is_mullvad_app_socks(b):
+            return True
     return False
 
 

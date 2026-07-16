@@ -102,11 +102,18 @@ DEFAULT_PROFILES: tuple[Profile, ...] = (
     Profile(
         id="stealth-entry",
         name="Stealth entry",
-        summary="REALITY camouflage into a VPN",
+        summary="REALITY entry (Mullvad app is OS underlay only — exit is REALITY server)",
         hops=[
             Hop("REALITY", "reality-primary"),
             Hop("VPN", "vpn-primary"),
         ],
+        notes=(
+            "With Mullvad app SOCKS as the second hop, spectred cannot nest 10.64.0.1 "
+            "through REALITY — it dials REALITY only. Keep Mullvad Connected if you want "
+            "the first mile on Mullvad. Exit IP is the REALITY server, not Mullvad. "
+            "Prefer REALITY-only for a clear path, or WireGuard .conf after REALITY for a "
+            "true second hop."
+        ),
         favorite=True,
     ),
     Profile(
