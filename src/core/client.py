@@ -46,8 +46,13 @@ class CoreStatus:
 # Health probes must stay short so UI refresh never freezes the main thread.
 _HEALTH_TIMEOUT = 0.4
 _START_POLL_TIMEOUT = 0.35
-_STATUS_TIMEOUT = 0.5
-_STATUS_CACHE_TTL = 0.35  # seconds — coalesce rapid chrome/tray/page polls
+# Status can include a cached Mullvad probe; 0.5s was too tight and caused
+# intermittent UNAVAILABLE → home flicker (“Offline” blink).
+_STATUS_TIMEOUT = 1.5
+_STATUS_CACHE_TTL = 0.5  # seconds — coalesce rapid chrome/tray/page polls
+# Keep showing last successful status briefly if a single poll fails (socket
+# timeout / brief restart) so the dashboard does not blink Offline.
+_STATUS_STICKY_SEC = 8.0
 
 
 def default_socket_path() -> str:
@@ -161,6 +166,8 @@ class CoreClient:
         self._last_payload: dict[str, Any] | None = None
         self._status_cache: CoreStatus | None = None
         self._status_cache_at: float = 0.0
+        self._last_good_status: CoreStatus | None = None
+        self._last_good_at: float = 0.0
 
     def _call(
         self,
@@ -281,6 +288,35 @@ class CoreClient:
                 continue
         return False
 
+    def _remember_good(self, st: CoreStatus, *, now: float) -> CoreStatus:
+        if st.state != CoreState.UNAVAILABLE:
+            self._last_good_status = st
+            self._last_good_at = now
+        self._status = st
+        self._status_cache = st
+        self._status_cache_at = now
+        return st
+
+    def _sticky_or_offline(
+        self,
+        offline: CoreStatus,
+        *,
+        now: float,
+        reason: str = "",
+    ) -> CoreStatus:
+        """Prefer last good status for a short window after a blip."""
+        if (
+            self._last_good_status is not None
+            and (now - self._last_good_at) < _STATUS_STICKY_SEC
+        ):
+            # Reuse last good; keep cache warm so we do not thrash.
+            self._status = self._last_good_status
+            self._status_cache = self._last_good_status
+            self._status_cache_at = now
+            return self._last_good_status
+        _ = reason
+        return self._remember_good(offline, now=now)
+
     def refresh(self, *, force: bool = False) -> CoreStatus:
         """Fetch core status. Uses a short TTL cache so UI page switches stay snappy."""
         now = time.monotonic()
@@ -295,7 +331,7 @@ class CoreClient:
         # Prefer a single /v1/status call (includes health-ish liveness). Avoid a
         # separate /health round-trip on every chrome update.
         if not self.socket_path or not Path(self.socket_path).exists():
-            self._status = CoreStatus(
+            offline = CoreStatus(
                 state=CoreState.UNAVAILABLE,
                 message="Spectre core is not running",
                 active_profile=profile,
@@ -306,16 +342,15 @@ class CoreClient:
                 leak_guard=None,
                 last_payload=self._last_payload,
             )
-            self._status_cache = self._status
-            self._status_cache_at = now
-            return self._status
+            # Missing socket can be a brief restart; sticky if we were just fine.
+            return self._sticky_or_offline(offline, now=now, reason="no-socket")
         try:
             code, data = self._call(
                 "GET", "/v1/status", timeout=_STATUS_TIMEOUT
             )
             if code != 200:
                 msg = _error_message(data) or f"status HTTP {code}"
-                self._status = CoreStatus(
+                offline = CoreStatus(
                     state=CoreState.UNAVAILABLE,
                     message=msg,
                     active_profile=profile,
@@ -323,17 +358,13 @@ class CoreClient:
                     hops=[],
                     last_payload=self._last_payload,
                 )
-                self._status_cache = self._status
-                self._status_cache_at = now
-                return self._status
-            self._status = _status_from_json(data, last_payload=self._last_payload)
-            if self._status.active_profile:
-                self._selected_profile = self._status.active_profile
-            self._status_cache = self._status
-            self._status_cache_at = now
-            return self._status
+                return self._sticky_or_offline(offline, now=now, reason="http")
+            st = _status_from_json(data, last_payload=self._last_payload)
+            if st.active_profile:
+                self._selected_profile = st.active_profile
+            return self._remember_good(st, now=now)
         except (OSError, TimeoutError, ConnectionError, socket.timeout) as exc:
-            self._status = CoreStatus(
+            offline = CoreStatus(
                 state=CoreState.UNAVAILABLE,
                 message=f"Core unreachable: {exc}",
                 active_profile=profile,
@@ -341,9 +372,7 @@ class CoreClient:
                 hops=[],
                 last_payload=self._last_payload,
             )
-            self._status_cache = self._status
-            self._status_cache_at = now
-            return self._status
+            return self._sticky_or_offline(offline, now=now, reason="error")
 
     def status(self, *, force: bool = False) -> CoreStatus:
         return self.refresh(force=force)

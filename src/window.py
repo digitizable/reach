@@ -41,6 +41,7 @@ class SpectreWindow(Adw.ApplicationWindow):
         # Periodic core poll so CLI/tray path changes appear without clicking.
         self._status_poll_id: int | None = None
         self._last_status_sig: tuple | None = None
+        self._offline_streak: int = 0
 
         root = Adw.ToolbarView()
         root.set_hexpand(True)
@@ -144,6 +145,19 @@ class SpectreWindow(Adw.ApplicationWindow):
             return True
         try:
             st = self._services.core.status(force=True)
+            # Debounce true offline: one failed/sticky blip must not repaint
+            # the dashboard as “Core offline” over “Not connected”.
+            if st.state == CoreState.UNAVAILABLE:
+                self._offline_streak += 1
+                if self._offline_streak < 2 and self._last_status_sig is not None:
+                    prev_state = (
+                        self._last_status_sig[0] if self._last_status_sig else ""
+                    )
+                    if prev_state and prev_state != CoreState.UNAVAILABLE.value:
+                        return True
+            else:
+                self._offline_streak = 0
+
             self._sync_selected_profile_from_core(st)
             sig = self._status_signature(st)
             if sig == self._last_status_sig:
@@ -161,7 +175,9 @@ class SpectreWindow(Adw.ApplicationWindow):
             app = self.get_application()
             if app is not None and hasattr(app, "_refresh_tray"):
                 try:
-                    app._refresh_tray()
+                    # Cache is warm from force=True above — tray should not
+                    # issue another blocking status call on the UI thread.
+                    app._refresh_tray(force=False)
                 except Exception:
                     pass
         except Exception:

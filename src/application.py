@@ -175,16 +175,21 @@ class SpectreApplication(Adw.Application):
         self._refresh_tray()
         return True
 
-    def _refresh_tray(self) -> None:
+    def _refresh_tray(self, *, force: bool = True) -> None:
         if self._tray is None or not self._tray.available:
             return
         try:
-            # force=True so tray tracks CLI connect/disconnect, not a stale cache
-            st = self.services.core.status(force=True)
+            # force=True when tray timer fires alone; False when window poll
+            # already refreshed (avoids double /v1/status and flicker).
+            st = self.services.core.status(force=force)
             if st.state == CoreState.CONNECTED:
                 detail = st.path_summary or "Protected"
                 if st.local_proxy:
-                    detail = f"{detail} · SOCKS {st.local_proxy}" if st.path_summary else f"SOCKS {st.local_proxy}"
+                    detail = (
+                        f"{detail} · SOCKS {st.local_proxy}"
+                        if st.path_summary
+                        else f"SOCKS {st.local_proxy}"
+                    )
             else:
                 detail = st.message or st.state.value
             self._tray.update_state(st.state, detail)
