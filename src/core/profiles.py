@@ -97,55 +97,76 @@ def _parse_profile(item: dict) -> Profile | None:
 
 
 # Seeded when the store is missing or empty (first run).
-# backend_id values match DEFAULT_BACKENDS in core.backends.
+# backend_id values match default_backend_templates() in core.backends.
+# Only valid compositions (see core.path_compose) — invalid nestings are blocked.
 DEFAULT_PROFILES: tuple[Profile, ...] = (
     Profile(
         id="stealth-entry",
         name="Stealth entry",
-        summary="REALITY entry (Mullvad app is OS underlay only — exit is REALITY server)",
-        hops=[
-            Hop("REALITY", "reality-primary"),
-            Hop("VPN", "vpn-primary"),
-        ],
+        summary="REALITY only — public exit is the REALITY server",
+        hops=[Hop("REALITY", "reality-primary")],
         notes=(
-            "With Mullvad app SOCKS as the second hop, spectred cannot nest 10.64.0.1 "
-            "through REALITY — it dials REALITY only. Keep Mullvad Connected if you want "
-            "the first mile on Mullvad. Exit IP is the REALITY server, not Mullvad. "
-            "Prefer REALITY-only for a clear path, or WireGuard .conf after REALITY for a "
-            "true second hop."
+            "Fill the REALITY backend first. For Mullvad as first-mile underlay, "
+            "use “Mullvad into REALITY” (Mullvad SOCKS first, then REALITY)."
         ),
         favorite=True,
     ),
     Profile(
-        id="vpn-only",
-        name="VPN only",
-        summary="Single commercial VPN hop",
-        hops=[Hop("VPN", "vpn-primary")],
+        id="mullvad-only",
+        name="Mullvad only",
+        summary="Mullvad app SOCKS exit",
+        hops=[Hop("Proxy", "mullvad-socks")],
+        notes="Requires the Mullvad app Connected (full tunnel + in-tunnel SOCKS).",
     ),
     Profile(
-        id="vpn-tor",
-        name="VPN into Tor",
-        summary="VPN hop, then Tor for stronger anonymity",
+        id="mullvad-reality",
+        name="Mullvad into REALITY",
+        summary="Mullvad app underlay → REALITY exit",
         hops=[
-            Hop("VPN", "vpn-primary"),
+            Hop("Proxy", "mullvad-socks"),
+            Hop("REALITY", "reality-primary"),
+        ],
+        notes=(
+            "Mullvad is OS underlay; Spectre dials REALITY only. "
+            "Exit IP is the REALITY server — not a Mullvad exit. "
+            "Check: https://anguish.sh/reality-check"
+        ),
+    ),
+    Profile(
+        id="mullvad-tor",
+        name="Mullvad into Tor",
+        summary="Mullvad app underlay → Tor exit",
+        hops=[
+            Hop("Proxy", "mullvad-socks"),
             Hop("Tor", "tor-system"),
         ],
+        notes=(
+            "Mullvad stays the OS tunnel; Spectre dials Tor only. "
+            "Traffic is still Host → Mullvad → Tor when the app is Connected."
+        ),
     ),
     Profile(
         id="tor-only",
         name="Tor only",
-        summary="Route through system Tor",
+        summary="System Tor exit",
         hops=[Hop("Tor", "tor-system")],
     ),
     Profile(
-        id="full-stack",
-        name="Full stack",
-        summary="REALITY → VPN → Tor",
+        id="vpn-only",
+        name="VPN only",
+        summary="WireGuard hop (enable + .conf under Backends)",
+        hops=[Hop("VPN", "vpn-primary")],
+        notes="Disabled by default until a WireGuard .conf is set on vpn-primary.",
+    ),
+    Profile(
+        id="vpn-tor",
+        name="VPN into Tor",
+        summary="WireGuard underlay → Tor exit",
         hops=[
-            Hop("REALITY", "reality-primary"),
             Hop("VPN", "vpn-primary"),
             Hop("Tor", "tor-system"),
         ],
+        notes="Requires a working WireGuard backend, then system Tor.",
     ),
 )
 

@@ -29,6 +29,7 @@ class CoreStatus:
     profile_id: str | None = None
     path_summary: str = "No path"
     hops: list[str] = field(default_factory=list)
+    hop_details: list[dict[str, Any]] = field(default_factory=list)
     local_proxy: str = ""
     dns_ok: bool | None = None
     leak_guard: bool | None = None
@@ -126,6 +127,12 @@ def _status_from_json(
     ksa = data.get("kill_switch_active")
     ra = data.get("routing_active")
     mv = data.get("mullvad")
+    raw_details = data.get("hop_details") or []
+    hop_details: list[dict[str, Any]] = (
+        [d for d in raw_details if isinstance(d, dict)]
+        if isinstance(raw_details, list)
+        else []
+    )
     return CoreStatus(
         state=_parse_state(str(data.get("state") or "")),
         message=str(data.get("message") or ""),
@@ -133,6 +140,7 @@ def _status_from_json(
         profile_id=data.get("profile_id") or None,
         path_summary=str(data.get("path_summary") or "No path"),
         hops=list(data.get("hops") or []),
+        hop_details=hop_details,
         local_proxy=str(data.get("local_proxy") or ""),
         dns_ok=data.get("dns_ok"),
         leak_guard=data.get("leak_guard"),

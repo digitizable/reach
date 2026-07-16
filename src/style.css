@@ -247,11 +247,49 @@ button.nav-btn.nav-btn-active {
   color: #a8c4ae;
 }
 
+.path-node-sub {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #6a6a6a;
+  text-transform: lowercase;
+}
+
+.path-node-sub-exit {
+  color: #86efac;
+}
+
+.path-node-sub-muted {
+  color: #a3a3a3;
+  font-weight: 500;
+}
+
+.path-node-muted {
+  opacity: 0.55;
+}
+
+.path-node-muted .path-node-icon-mullvad {
+  opacity: 0.85;
+}
+
 .path-arrow {
   font-size: 13px;
   color: #555555;
   padding: 0 2px;
   min-width: 14px;
+}
+
+.path-arrow-muted {
+  color: #3a3a3a;
+  opacity: 0.7;
+}
+
+.path-caption {
+  font-size: 11px;
+  color: #9a9a9a;
+  margin-top: 2px;
+  line-height: 1.35;
+  max-width: 22rem;
 }
 
 .path-empty {
@@ -295,6 +333,16 @@ button.nav-btn.nav-btn-active {
   font-size: 12px;
   font-weight: 600;
   color: #e8e8e8;
+}
+
+.profile-path-hint {
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.profile-path-hint-error {
+  color: #f0a8a8;
 }
 
 .profile-row-hops {

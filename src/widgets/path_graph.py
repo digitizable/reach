@@ -1,4 +1,4 @@
-"""Centered path diagram — slim icon nodes + arrows."""
+"""Centered path diagram — slim icon nodes + arrows + exit/not-exit roles."""
 
 from __future__ import annotations
 
@@ -116,33 +116,66 @@ def _image_for(title: str, *, kind: str, also: str = "") -> Gtk.Image:
     return img
 
 
-def _node(title: str, *, live: bool = False, kind: str = "hop") -> Gtk.Widget:
-    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-    col.add_css_class("path-node")
-    col.add_css_class(f"path-kind-{kind}")
-    if live:
-        col.add_css_class("path-live")
-    col.set_halign(Gtk.Align.CENTER)
-    col.set_valign(Gtk.Align.CENTER)
-    col.set_hexpand(False)
-
-    col.append(_image_for(title, kind=kind))
-
-    lab = Gtk.Label(label=title)
-    lab.add_css_class("path-node-label")
-    lab.set_halign(Gtk.Align.CENTER)
-    lab.set_max_width_chars(9)
-    col.append(lab)
-    return col
-
-
-def _arrow() -> Gtk.Widget:
+def _arrow(*, muted: bool = False) -> Gtk.Widget:
     lab = Gtk.Label(label="→")
     lab.add_css_class("path-arrow")
+    if muted:
+        lab.add_css_class("path-arrow-muted")
     lab.set_valign(Gtk.Align.CENTER)
     lab.set_halign(Gtk.Align.CENTER)
     lab.set_margin_bottom(12)
     return lab
+
+
+def _hop_node(
+    title: str,
+    *,
+    live: bool = False,
+    kind: str = "hop",
+    role: str = "hop",
+    sublabel: str = "",
+    also: str = "",
+) -> Gtk.Widget:
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    col.add_css_class("path-node")
+    col.add_css_class(f"path-kind-{kind}")
+    col.add_css_class(f"path-role-{role}")
+    if live:
+        col.add_css_class("path-live")
+    if role in ("not-exit", "underlay"):
+        col.add_css_class("path-node-muted")
+    col.set_halign(Gtk.Align.CENTER)
+    col.set_valign(Gtk.Align.CENTER)
+    col.set_hexpand(False)
+
+    col.append(_image_for(title if kind != "you" else "you", kind=kind, also=also or title))
+
+    lab = Gtk.Label(label=title)
+    lab.add_css_class("path-node-label")
+    lab.set_halign(Gtk.Align.CENTER)
+    lab.set_max_width_chars(11)
+    col.append(lab)
+
+    # Role tag under the name: exit / not exit / underlay
+    tag = (sublabel or "").strip()
+    if not tag and role in ("exit", "not-exit", "underlay", "entry"):
+        tag = {
+            "exit": "exit",
+            "not-exit": "not exit",
+            "underlay": "underlay",
+            "entry": "entry",
+        }.get(role, "")
+    if tag:
+        sub = Gtk.Label(label=tag)
+        sub.add_css_class("path-node-sub")
+        if role == "exit":
+            sub.add_css_class("path-node-sub-exit")
+        elif role in ("not-exit", "underlay"):
+            sub.add_css_class("path-node-sub-muted")
+        sub.set_halign(Gtk.Align.CENTER)
+        col.append(sub)
+
+    return col
 
 
 def path_graph(
@@ -151,14 +184,19 @@ def path_graph(
     live: bool = False,
     empty: str = "No path configured",
     labels: list[str] | None = None,
+    roles: list[str] | None = None,
+    sublabels: list[str] | None = None,
+    caption: str = "",
 ) -> Gtk.Widget:
     """
     Slim centered chain.
 
-    `hops` are kinds (for icons). Optional `labels` override node text
-    (e.g. bound backend names).
+    `hops` are kinds (for icons). Optional `labels` override node text.
+    `roles` mark exit / not-exit / underlay so the last hop is not always
+    implied to be the public exit. Optional `caption` is plain English under
+    the row.
     """
-    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     root.add_css_class("path-diagram")
     root.set_halign(Gtk.Align.CENTER)
     root.set_hexpand(True)
@@ -176,35 +214,51 @@ def path_graph(
     row.set_valign(Gtk.Align.CENTER)
     row.set_hexpand(False)
 
-    row.append(_node("You", live=live, kind="you"))
+    row.append(_hop_node("You", live=live, kind="you", role="you", sublabel=""))
+
     for i, hop in enumerate(hops):
-        row.append(_arrow())
-        if i == 0:
-            kind = "entry"
+        role = "hop"
+        if roles is not None and i < len(roles) and roles[i]:
+            role = roles[i]
+        elif i == 0:
+            role = "entry"
         elif i == len(hops) - 1:
-            kind = "exit"
-        else:
-            kind = "hop"
-        # Label may be backend name (e.g. "Mullvad SOCKS"); hop is kind (Proxy/VPN).
+            role = "exit"
+
+        # Mute arrow into a hop that is not on the dial/exit path.
+        muted_arrow = role in ("not-exit", "underlay")
+        row.append(_arrow(muted=muted_arrow))
+
         label = hop
         if labels is not None and i < len(labels) and labels[i]:
             label = labels[i]
-        # Icon: match brand marks on kind *and* backend name (Mullvad, Tor, …).
-        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        col.add_css_class("path-node")
-        col.add_css_class(f"path-kind-{kind}")
-        if live:
-            col.add_css_class("path-live")
-        col.set_halign(Gtk.Align.CENTER)
-        col.set_valign(Gtk.Align.CENTER)
-        col.set_hexpand(False)
-        col.append(_image_for(hop, kind=kind, also=label))
-        lab = Gtk.Label(label=label)
-        lab.add_css_class("path-node-label")
-        lab.set_halign(Gtk.Align.CENTER)
-        lab.set_max_width_chars(10)
-        col.append(lab)
-        row.append(col)
+        sub = ""
+        if sublabels is not None and i < len(sublabels):
+            sub = sublabels[i] or ""
+
+        # Visual kind for CSS: prefer exit over generic hop when role says so.
+        vis_kind = role if role in ("exit", "entry", "not-exit", "underlay") else "hop"
+        if i == 0 and role == "hop":
+            vis_kind = "entry"
+
+        row.append(
+            _hop_node(
+                label,
+                live=live and role not in ("not-exit",),
+                kind=vis_kind,
+                role=role,
+                sublabel=sub,
+                also=hop,
+            )
+        )
 
     root.append(row)
+
+    if caption and caption.strip():
+        cap = Gtk.Label(label=caption.strip(), wrap=True, justify=Gtk.Justification.CENTER)
+        cap.add_css_class("path-caption")
+        cap.set_halign(Gtk.Align.CENTER)
+        cap.set_max_width_chars(42)
+        root.append(cap)
+
     return root

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from gi.repository import Gtk
 
 from core.backends import BackendStore
+from core.path_explain import explain_profile
 from core.profiles import Profile
 from core.readiness import profile_status_tag
 
@@ -31,12 +32,8 @@ def _text_block(
     content.append(title_row)
 
     if backends is not None:
-        # Prefer bound backend names when present
-        parts: list[str] = []
-        for hop in profile.hops:
-            b = backends.get(hop.backend_id) if hop.backend_id else None
-            parts.append(b.name if b else hop.kind)
-        hops_text = " → ".join(parts) if parts else "No hops"
+        explain = explain_profile(profile, backends)
+        hops_text = explain.hops_line
         tag = profile_status_tag(profile, backends)
         hops_text = f"{hops_text} · {tag}"
     else:
@@ -45,6 +42,7 @@ def _text_block(
     hops = Gtk.Label(label=hops_text, xalign=0)
     hops.add_css_class("profile-row-hops")
     hops.set_hexpand(True)
+    hops.set_wrap(True)
     content.append(hops)
     return content
 

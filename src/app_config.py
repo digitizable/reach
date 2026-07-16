@@ -7,7 +7,7 @@ from pathlib import Path
 
 APPLICATION_ID = "com.digitizable.spectre-desktop"
 APPLICATION_NAME = "Spectre Desktop"
-APPLICATION_VERSION = "0.3.5"
+APPLICATION_VERSION = "0.3.6"
 APPLICATION_ICON = APPLICATION_ID
 
 # Upstream for update checks (GitHub Releases)

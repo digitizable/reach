@@ -7,6 +7,8 @@ from collections.abc import Callable
 from gi.repository import Adw, Gtk
 
 from core.backends import BackendStore
+from core.path_compose import can_append_hop, composition_issues
+from core.path_explain import explain_profile
 from core.profiles import HOP_KINDS, Hop, Profile
 
 
@@ -62,6 +64,12 @@ class ProfileEditorDialog(Adw.MessageDialog):
 
         self._hops_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         box.append(self._hops_box)
+
+        self._path_hint = Gtk.Label(label="", xalign=0, wrap=True)
+        self._path_hint.add_css_class("muted")
+        self._path_hint.add_css_class("profile-path-hint")
+        self._path_hint.set_visible(False)
+        box.append(self._path_hint)
 
         add_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._hop_kind = Gtk.DropDown.new_from_strings(list(HOP_KINDS))
@@ -123,6 +131,7 @@ class ProfileEditorDialog(Adw.MessageDialog):
             empty = Gtk.Label(label="No hops yet — add at least one.", xalign=0)
             empty.add_css_class("muted")
             self._hops_box.append(empty)
+            self._update_path_hint()
             self._refresh_save()
             return
 
@@ -178,7 +187,39 @@ class ProfileEditorDialog(Adw.MessageDialog):
                 row.append(hint)
 
             self._hops_box.append(row)
+        self._update_path_hint()
         self._refresh_save()
+
+    def _update_path_hint(self) -> None:
+        hint = getattr(self, "_path_hint", None)
+        if hint is None:
+            return
+        if not self._hops:
+            hint.set_visible(False)
+            hint.set_text("")
+            return
+        draft = Profile(id="draft", name="draft", hops=list(self._hops))
+        issues = composition_issues(draft, self._backends)
+        if issues:
+            self._update_path_hint_error(issues[0].message)
+            return
+        explain = explain_profile(draft, self._backends)
+        if explain.caption and (explain.rewritten or len(self._hops) > 1):
+            hint.remove_css_class("profile-path-hint-error")
+            hint.set_text(explain.caption)
+            hint.set_visible(True)
+        else:
+            hint.remove_css_class("profile-path-hint-error")
+            hint.set_text("")
+            hint.set_visible(False)
+
+    def _update_path_hint_error(self, message: str) -> None:
+        hint = getattr(self, "_path_hint", None)
+        if hint is None:
+            return
+        hint.add_css_class("profile-path-hint-error")
+        hint.set_text(message)
+        hint.set_visible(True)
 
     def _on_backend_pick(
         self,
@@ -190,6 +231,7 @@ class ProfileEditorDialog(Adw.MessageDialog):
         idx = int(dd.get_selected())
         if 0 <= index < len(self._hops) and 0 <= idx < len(choices):
             self._hops[index].backend_id = choices[idx][0]
+            self._update_path_hint()
 
     def _on_add_hop(self, *_a) -> None:
         model = self._hop_kind.get_model()
@@ -210,6 +252,15 @@ class ProfileEditorDialog(Adw.MessageDialog):
             backends = self._backends.list(kind=kind)
             if backends:
                 backend_id = backends[0].id
+        # Block invalid nestings at add-time when backends are known.
+        if backend_id:
+            issue = can_append_hop(self._hops, kind, backend_id, self._backends)
+            if issue is not None:
+                if self._on_error:
+                    self._on_error(issue.message)
+                else:
+                    self._update_path_hint_error(issue.message)
+                return
         self._hops.append(Hop(kind=kind, backend_id=backend_id))
         self._rebuild_hops()
 
@@ -234,6 +285,14 @@ class ProfileEditorDialog(Adw.MessageDialog):
         if not self._hops:
             if self._on_error:
                 self._on_error("Add at least one hop")
+            return None
+        draft = Profile(id="draft", name=name, hops=list(self._hops))
+        issues = composition_issues(draft, self._backends)
+        if issues:
+            msg = issues[0].message
+            if self._on_error:
+                self._on_error(msg)
+            self._update_path_hint_error(msg)
             return None
         return {
             "name": name,

@@ -82,7 +82,13 @@ def routing_warnings(
     if mode not in ("system", "apps"):
         mode = "system"
 
+    # Invalid nestings are hard errors in composition_issues / profile_readiness —
+    # only emit soft hints for allowed underlay patterns.
     if not profile_uses_mullvad_app_socks(profile, backends):
+        return warnings
+
+    if profile is not None and profile_is_reality_then_mullvad(profile, backends):
+        # Should already be blocked as a readiness issue; no soft rewrite story.
         return warnings
 
     if mode == "apps":
@@ -97,29 +103,37 @@ def routing_warnings(
             "on top. Connect Mullvad first, then Spectre."
         )
 
-    # Host → Mullvad → local Tor is not nested SOCKS (remote cannot dial 127.0.0.1).
-    if profile is not None and _profile_is_mullvad_then_local_tor(profile, backends):
-        warnings.append(
-            "Mullvad → local Tor: Mullvad stays the OS tunnel; Spectre dials Tor only "
-            "(cannot SOCKS-chain 10.64.0.1 into 127.0.0.1). Traffic is still Host → Mullvad → Tor."
-        )
+    # Host → Mullvad → local Tor/REALITY: allowed; Mullvad is OS underlay.
+    if profile is not None and profile_is_mullvad_then_local_exit(profile, backends):
+        if profile_is_mullvad_then_local_tor(profile, backends):
+            warnings.append(
+                "Exit is Tor. Mullvad is the OS tunnel underlay — not SOCKS-chained into Tor."
+            )
+        else:
+            warnings.append(
+                "Exit is REALITY. Mullvad is the OS tunnel underlay — not SOCKS-chained into REALITY."
+            )
 
-    # REALITY (or other local hop) → Mullvad app SOCKS cannot nest into 10.64 through
-    # the REALITY exit. Core dials REALITY only; exit IP is the REALITY server.
-    if profile is not None and _profile_is_reality_then_mullvad(profile, backends):
-        warnings.append(
-            "REALITY → Mullvad app SOCKS: cannot nest 10.64.0.1 through REALITY. "
-            "Spectre dials REALITY only (keep Mullvad Connected as OS underlay if you want). "
-            "Exit is the REALITY server — Mullvad Connection Check will not show a Mullvad exit. "
-            "Sites hosted on that same VPS may fail (hairpin NAT)."
-        )
     return warnings
 
 
-def _profile_is_mullvad_then_local_tor(
+def profile_is_mullvad_then_local_tor(
     profile: Profile, backends: BackendStore
 ) -> bool:
     """True when path is Mullvad tunnel SOCKS followed later by local Tor."""
+    return _profile_is_mullvad_then_kinds(profile, backends, {"Tor"})
+
+
+def profile_is_mullvad_then_local_exit(
+    profile: Profile, backends: BackendStore
+) -> bool:
+    """Mullvad app SOCKS first, then local Tor and/or REALITY (underlay pattern)."""
+    return _profile_is_mullvad_then_kinds(profile, backends, {"Tor", "REALITY"})
+
+
+def _profile_is_mullvad_then_kinds(
+    profile: Profile, backends: BackendStore, kinds: set[str]
+) -> bool:
     saw_mullvad = False
     for hop in profile.hops:
         b = backends.get(hop.backend_id) if hop.backend_id else None
@@ -128,14 +142,18 @@ def _profile_is_mullvad_then_local_tor(
         if is_mullvad_app_socks(b):
             saw_mullvad = True
             continue
-        if saw_mullvad and hop.kind == "Tor":
+        if not saw_mullvad:
+            continue
+        if hop.kind == "Tor" and "Tor" in kinds:
             host = (b.tor_socks_host or "").strip().lower()
             if b.tor_use_system or host in ("", "127.0.0.1", "localhost", "::1"):
                 return True
+        if hop.kind == "REALITY" and "REALITY" in kinds:
+            return True
     return False
 
 
-def _profile_is_reality_then_mullvad(
+def profile_is_reality_then_mullvad(
     profile: Profile, backends: BackendStore
 ) -> bool:
     """True when a REALITY hop is later followed by Mullvad app SOCKS."""
@@ -150,6 +168,11 @@ def _profile_is_reality_then_mullvad(
         if saw_reality and is_mullvad_app_socks(b):
             return True
     return False
+
+
+# Back-compat aliases (older imports)
+_profile_is_mullvad_then_local_tor = profile_is_mullvad_then_local_tor
+_profile_is_reality_then_mullvad = profile_is_reality_then_mullvad
 
 
 # ── Live probes (fast, connect-time) ───────────────────────────────
@@ -421,6 +444,13 @@ def profile_readiness(
         if live:
             issues.extend(live_backend_issues(backend, hop_index=i))
 
+    # Hard composition rules (invalid nestings block ready/Connect).
+    if not any("has no backend" in x or "missing backend" in x or "incomplete" in x for x in issues):
+        from core.path_compose import composition_issues
+
+        for ci in composition_issues(profile, backends):
+            issues.append(ci.message)
+
     if live:
         issues.extend(
             live_policy_issues(
@@ -434,7 +464,7 @@ def profile_readiness(
 
 
 def profile_status_tag(profile: Profile | None, backends: BackendStore) -> str:
-    """Short tag for list rows: ready / incomplete / unbound (structural only)."""
+    """Short tag for list rows: ready / incomplete / unbound / invalid."""
     ready = profile_readiness(profile, backends, live=False)
     if ready.ok:
         return "ready"
@@ -443,4 +473,8 @@ def profile_status_tag(profile: Profile | None, backends: BackendStore) -> str:
     unbound = any(not h.backend_id for h in profile.hops)
     if unbound:
         return "unbound"
+    from core.path_compose import composition_issues
+
+    if composition_issues(profile, backends):
+        return "invalid"
     return "incomplete"

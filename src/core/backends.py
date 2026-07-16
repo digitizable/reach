@@ -217,20 +217,33 @@ def mullvad_wireguard_backend() -> Backend:
 
 
 def default_backend_templates() -> tuple[Backend, ...]:
-    """Default backends; Tor adapts to Whonix when detected.
+    """Default backends for first run; Tor adapts to Whonix when detected.
 
-    Mullvad is supported as an optional backend you can add — it is not seeded
-    so first-run does not look Mullvad-branded.
+    Stable IDs match DEFAULT_PROFILES hop bindings. Incomplete backends
+    (empty REALITY fields / missing WireGuard conf) stay unbound until filled.
+    Mullvad app SOCKS is seeded so underlay profiles work out of the box when
+    the Mullvad app is installed.
     """
+    vpn = draft_vpn_backend()
+    vpn.enabled = False
+    vpn.notes = (
+        "Optional WireGuard .conf path (any provider). Enable and set vpn_config "
+        "to use VPN-only / VPN-into-Tor profiles."
+    )
     return (
-        draft_vpn_backend(),
+        mullvad_socks_backend(),
+        vpn,
         Backend(
             id="reality-primary",
             kind="REALITY",
-            name="Entry REALITY",
-            notes="Fill in server + public key + UUID under Backends",
+            name="REALITY entry",
+            notes=(
+                "VLESS + REALITY client. Fill server, port, UUID, public key, "
+                "short id, and SNI under Backends. REALITY must be last on a path."
+            ),
             reality_port=443,
             reality_flow="xtls-rprx-vision",
+            reality_fingerprint="chrome",
         ),
         _tor_default_backend(),
     )

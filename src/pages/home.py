@@ -7,6 +7,8 @@ from collections.abc import Callable
 from gi.repository import Gtk
 
 from core.client import CoreState
+from core.path_explain import explain_live, explain_profile
+from core.readiness import profile_uses_mullvad_app_socks
 from services import Services
 from widgets.chrome import clear_box, fit_body
 from widgets.path_graph import path_graph
@@ -201,8 +203,12 @@ class HomePage(Gtk.Box):
                 ):
                     detail += f" · KS off ({st.kill_switch_detail})"
             if ready.warnings:
-                # Keep short on the home line; full text is toasted on connect
-                if "Mullvad" in ready.warnings[0]:
+                # Prefer the exit/rewrite warning over generic Mullvad full-tunnel.
+                w0 = ready.warnings[0]
+                if "Exit is" in w0 or "exit is" in w0.lower():
+                    # Already covered by path caption; keep detail short.
+                    pass
+                elif "Mullvad" in w0:
                     detail += " · Mullvad full-tunnel"
             if whonix and whonix_role == "workstation":
                 detail += " · Whonix"
@@ -231,14 +237,24 @@ class HomePage(Gtk.Box):
                 if socks and port:
                     detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
-        # Only surface Mullvad status when the *live* path uses it (or the
-        # planned profile, when disconnected). Core always reports CLI state.
-        from core.readiness import profile_uses_mullvad_app_socks
-
-        show_mv = False
+        # Path roles: who is actually the public exit (not just hop order).
+        backends = self._services.backends
+        hop_details = getattr(st, "hop_details", None)
         if active and st.hops:
-            show_mv = any("mullvad" in str(h).lower() for h in st.hops)
-        elif profile_uses_mullvad_app_socks(profile, self._services.backends):
+            explain = explain_live(
+                list(st.hops),
+                hop_details=hop_details if isinstance(hop_details, list) else None,
+                profile=profile,
+                backends=backends,
+            )
+        elif profile is not None:
+            explain = explain_profile(profile, backends)
+        else:
+            explain = explain_profile(None, backends)
+
+        # Mullvad CLI status — only when it matters, and never as if it were the exit.
+        show_mv = False
+        if profile_uses_mullvad_app_socks(profile, backends):
             show_mv = True
         if show_mv:
             mv = getattr(st, "mullvad", None)
@@ -246,37 +262,23 @@ class HomePage(Gtk.Box):
                 summary = str(mv.get("summary") or "")
                 if summary and summary not in detail:
                     detail = f"{detail} · {summary}" if detail else summary
-
         for k in ("offline", "idle", "busy", "live", "unknown", "bad"):
             self._dot.remove_css_class(f"state-{k}")
         self._dot.add_css_class(f"state-{kind.value}")
         self._title.set_text(titles.get(st.state, st.state.value))
         self._detail.set_text(detail)
 
-        # Path graph: when live, trust the core hop list (CLI/tray may differ
-        # from the desktop's selected profile). When idle, show the planned profile.
-        labels: list[str] = []
-        hops_for_icons: list[str] = []
-        if active and st.hops:
-            labels = list(st.hops)
-            hops_for_icons = list(st.hops)
-        elif profile is not None:
-            for hop in profile.hops:
-                backend = (
-                    self._services.backends.get(hop.backend_id)
-                    if hop.backend_id
-                    else None
-                )
-                labels.append(backend.name if backend else hop.kind)
-            hops_for_icons = profile.hop_kinds()
-
         clear_box(self._path_host)
         self._path_host.append(
             path_graph(
-                hops_for_icons,
+                explain.kinds if explain.hops else [],
                 live=active,
                 empty="Choose a profile",
-                labels=labels or None,
+                labels=explain.labels or None,
+                roles=explain.roles or None,
+                sublabels=explain.sublabels or None,
+                # Always name the public exit when we know it.
+                caption=explain.caption,
             )
         )
         if active:
