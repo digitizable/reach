@@ -4,14 +4,16 @@ Taskbars (Cinnamon/GNOME/KDE on X11) map windows to a .desktop file via
 StartupWMClass. We:
 
   1. Give each excluded instance a unique WM class (``SpectreExclude-…``)
-  2. Composite a small amber badge on the app icon
+  2. Composite a Tabler “world” SVG badge (blue wireframe) on the app icon
   3. Install a user .desktop file with that class + badged icon
 
+Globe art: Tabler Icons ``world`` (MIT) — https://tabler.io/icons/icon/world
 Menu/dock launches of the real app are unchanged (different WM class).
 """
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -20,8 +22,10 @@ from pathlib import Path
 
 from core.apps import RoutedApp
 
-_BADGE_SIZE_FRAC = 0.42  # badge diameter relative to icon
+_BADGE_SIZE_FRAC = 0.48  # badge diameter relative to icon
 _CACHE_SIZE = 128  # px
+# Bump when badge art changes so cached PNGs regenerate.
+_BADGE_ART = "tabler-world-v1"
 
 
 def exclude_wm_class(app: RoutedApp) -> str:
@@ -63,7 +67,7 @@ def _app_file_key(app: RoutedApp) -> str:
 
 
 def _icon_cache_path(app: RoutedApp) -> Path:
-    return _icons_dir() / f"{_app_file_key(app)}.png"
+    return _icons_dir() / f"{_app_file_key(app)}-{_BADGE_ART}.png"
 
 
 def _desktop_path(app: RoutedApp) -> Path:
@@ -122,8 +126,141 @@ def _load_base_pixbuf(icon_name: str, size: int = _CACHE_SIZE):
         return None
 
 
+def _globe_svg_path() -> Path | None:
+    """Packaged Tabler world SVG (data/assets/exclude-globe.svg)."""
+    try:
+        from app_config import project_root, src_dir
+    except Exception:
+        project_root = None  # type: ignore[assignment]
+        src_dir = None  # type: ignore[assignment]
+
+    candidates: list[Path] = []
+    if project_root is not None:
+        candidates.append(project_root() / "data" / "assets" / "exclude-globe.svg")
+    if src_dir is not None:
+        candidates.append(src_dir().parent / "data" / "assets" / "exclude-globe.svg")
+    # Dev / install fallbacks
+    here = Path(__file__).resolve()
+    candidates.extend(
+        [
+            here.parents[2] / "data" / "assets" / "exclude-globe.svg",
+            Path.home() / "Downloads" / "spectre-globe-tabler.svg",
+        ]
+    )
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
+
+
+def _render_globe_png(pixel_size: int) -> Path | None:
+    """Rasterize the Tabler world SVG to a cached PNG (rsvg-convert or GdkPixbuf)."""
+    svg = _globe_svg_path()
+    if svg is None:
+        return None
+    out = _icons_dir() / f"tabler-world-{pixel_size}.png"
+    if out.is_file() and out.stat().st_size > 32:
+        return out
+
+    rsvg = shutil.which("rsvg-convert")
+    if rsvg:
+        try:
+            r = subprocess.run(
+                [rsvg, "-w", str(pixel_size), "-h", str(pixel_size), "-o", str(out), str(svg)],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            if r.returncode == 0 and out.is_file():
+                return out
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    # GdkPixbuf with librsvg loader (if installed)
+    try:
+        import gi
+
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_size(str(svg), pixel_size, pixel_size)
+        if pb is not None:
+            pb.savev(str(out), "png", [], [])
+            return out
+    except Exception:
+        pass
+    return None
+
+
+def _pixbuf_to_cairo_surface(pixbuf):
+    """Convert GdkPixbuf (RGBA) → cairo ImageSurface (ARGB32)."""
+    import sys
+
+    import cairo
+
+    if not pixbuf.get_has_alpha():
+        pixbuf = pixbuf.add_alpha(False, 0, 0, 0)
+    w, h = pixbuf.get_width(), pixbuf.get_height()
+    pixels = pixbuf.get_pixels()
+    stride = pixbuf.get_rowstride()
+    buf = bytearray(w * h * 4)
+    le = sys.byteorder == "little"
+    for y in range(h):
+        row = y * stride
+        for x in range(w):
+            i = row + x * 4
+            r, g, b, a = pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]
+            o = (y * w + x) * 4
+            if le:
+                buf[o] = b
+                buf[o + 1] = g
+                buf[o + 2] = r
+                buf[o + 3] = a
+            else:
+                buf[o] = a
+                buf[o + 1] = r
+                buf[o + 2] = g
+                buf[o + 3] = b
+    return cairo.ImageSurface.create_for_data(
+        memoryview(buf), cairo.FORMAT_ARGB32, w, h, w * 4
+    )
+
+
+def _cairo_surface_to_pixbuf(surface):
+    """cairo ImageSurface (ARGB32) → GdkPixbuf RGBA."""
+    import sys
+
+    from gi.repository import GdkPixbuf
+
+    w, h = surface.get_width(), surface.get_height()
+    surface.flush()
+    data = surface.get_data()
+    out = bytearray(w * h * 4)
+    le = sys.byteorder == "little"
+    for y in range(h):
+        for x in range(w):
+            i = (y * w + x) * 4
+            if le:
+                b, g, r, a = data[i], data[i + 1], data[i + 2], data[i + 3]
+            else:
+                a, r, g, b = data[i], data[i + 1], data[i + 2], data[i + 3]
+            out[i] = r
+            out[i + 1] = g
+            out[i + 2] = b
+            out[i + 3] = a
+    return GdkPixbuf.Pixbuf.new_from_data(
+        bytes(out),
+        GdkPixbuf.Colorspace.RGB,
+        True,
+        8,
+        w,
+        h,
+        w * 4,
+    )
+
+
 def _draw_exclude_badge(pixbuf) -> object | None:
-    """Composite an amber 'clearnet / exclude' badge on the bottom-right."""
+    """Composite Tabler blue wireframe world badge on the bottom-right."""
     try:
         import cairo
         from gi.repository import GdkPixbuf
@@ -134,126 +271,69 @@ def _draw_exclude_badge(pixbuf) -> object | None:
     if w < 16 or h < 16:
         return pixbuf
 
-    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
-    cr = cairo.Context(surface)
-
-    # Draw base icon
     try:
-        from gi.repository import Gdk
-
-        # Gdk.cairo_set_source_pixbuf is Gdk 3; GTK4 uses different path.
-    except Exception:
-        pass
-
-    # Manual: write pixbuf pixels into cairo surface
-    try:
-        # Ensure RGBA
-        if not pixbuf.get_has_alpha():
-            pixbuf = pixbuf.add_alpha(False, 0, 0, 0)
-        pixels = pixbuf.get_pixels()
-        stride = pixbuf.get_rowstride()
-        # GdkPixbuf is RGBA; Cairo ARGB32 is native-endian — convert carefully.
-        import array
-        import struct
-        import sys
-
-        buf = bytearray(w * h * 4)
-        le = sys.byteorder == "little"
-        for y in range(h):
-            row = y * stride
-            for x in range(w):
-                i = row + x * 4
-                r, g, b, a = pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]
-                o = (y * w + x) * 4
-                if le:
-                    # Cairo ARGB32 little-endian: BGRA
-                    buf[o] = b
-                    buf[o + 1] = g
-                    buf[o + 2] = r
-                    buf[o + 3] = a
-                else:
-                    buf[o] = a
-                    buf[o + 1] = r
-                    buf[o + 2] = g
-                    buf[o + 3] = b
-        surface = cairo.ImageSurface.create_for_data(
-            memoryview(buf), cairo.FORMAT_ARGB32, w, h, w * 4
-        )
+        surface = _pixbuf_to_cairo_surface(pixbuf)
         cr = cairo.Context(surface)
     except Exception:
-        # Fallback solid dark tile
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+        cr = cairo.Context(surface)
         cr.set_source_rgb(0.12, 0.12, 0.12)
         cr.rectangle(0, 0, w, h)
         cr.fill()
 
-    # Badge: amber circle + white "gap" slash (off-path / clearnet)
-    d = max(10, int(min(w, h) * _BADGE_SIZE_FRAC))
-    cx = w - d * 0.38
-    cy = h - d * 0.38
-    radius = d * 0.42
+    d = max(14, int(min(w, h) * _BADGE_SIZE_FRAC))
+    cx = w - d * 0.40
+    cy = h - d * 0.40
+    radius = d * 0.46
 
-    # Soft shadow
-    cr.set_source_rgba(0, 0, 0, 0.45)
-    cr.arc(cx + 1, cy + 1, radius, 0, 6.2832)
+    # Soft shadow + dark plate
+    cr.set_source_rgba(0, 0, 0, 0.42)
+    cr.arc(cx + 0.9, cy + 0.9, radius * 1.06, 0, 2 * math.pi)
+    cr.fill()
+    cr.set_source_rgba(0.05, 0.08, 0.14, 0.94)
+    cr.arc(cx, cy, radius, 0, 2 * math.pi)
     cr.fill()
 
-    # Amber disc
-    cr.set_source_rgb(0.95, 0.62, 0.12)  # warm amber
-    cr.arc(cx, cy, radius, 0, 6.2832)
-    cr.fill()
+    # Tabler world PNG centered on the plate
+    globe_px = max(12, int(radius * 1.55))
+    globe_path = _render_globe_png(globe_px)
+    if globe_path is not None:
+        try:
+            globe_pb = GdkPixbuf.Pixbuf.new_from_file_at_size(
+                str(globe_path), globe_px, globe_px
+            )
+            gw, gh = globe_pb.get_width(), globe_pb.get_height()
+            gx = int(cx - gw / 2)
+            gy = int(cy - gh / 2)
+            gsurf = _pixbuf_to_cairo_surface(globe_pb)
+            cr.set_source_surface(gsurf, gx, gy)
+            cr.paint()
+        except Exception:
+            globe_path = None
 
-    # Dark ring
-    cr.set_source_rgb(0.15, 0.1, 0.02)
-    cr.set_line_width(max(1.0, radius * 0.12))
-    cr.arc(cx, cy, radius * 0.92, 0, 6.2832)
-    cr.stroke()
-
-    # White diagonal slash (exclude / off-path)
-    cr.set_source_rgb(1, 1, 1)
-    cr.set_line_width(max(1.5, radius * 0.28))
-    cr.set_line_cap(cairo.LINE_CAP_ROUND)
-    cr.move_to(cx - radius * 0.45, cy + radius * 0.45)
-    cr.line_to(cx + radius * 0.45, cy - radius * 0.45)
-    cr.stroke()
+    if globe_path is None:
+        # Minimal fallback if SVG rasterization is unavailable
+        cr.set_source_rgb(0.30, 0.62, 0.98)
+        cr.set_line_width(max(1.2, radius * 0.12))
+        cr.arc(cx, cy, radius * 0.72, 0, 2 * math.pi)
+        cr.stroke()
+        cr.move_to(cx - radius * 0.72, cy)
+        cr.line_to(cx + radius * 0.72, cy)
+        cr.stroke()
+        cr.save()
+        cr.translate(cx, cy)
+        cr.scale(0.45, 1.0)
+        cr.arc(0, 0, radius * 0.72, 0, 2 * math.pi)
+        cr.restore()
+        cr.stroke()
 
     surface.flush()
-
-    # Cairo → Pixbuf
     try:
-        data = surface.get_data()
-        # Convert ARGB32 back to RGBA for Pixbuf
-        import sys
-
-        out = bytearray(w * h * 4)
-        le = sys.byteorder == "little"
-        for y in range(h):
-            for x in range(w):
-                i = (y * w + x) * 4
-                if le:
-                    b, g, r, a = data[i], data[i + 1], data[i + 2], data[i + 3]
-                else:
-                    a, r, g, b = data[i], data[i + 1], data[i + 2], data[i + 3]
-                o = i
-                out[o] = r
-                out[o + 1] = g
-                out[o + 2] = b
-                out[o + 3] = a
-        return GdkPixbuf.Pixbuf.new_from_data(
-            bytes(out),
-            GdkPixbuf.Colorspace.RGB,
-            True,
-            8,
-            w,
-            h,
-            w * 4,
-        )
+        return _cairo_surface_to_pixbuf(surface)
     except Exception:
-        # Save via cairo png and reload
         try:
             tmp = _icons_dir() / ".badge-tmp.png"
             surface.write_to_png(str(tmp))
-            from gi.repository import GdkPixbuf
-
             return GdkPixbuf.Pixbuf.new_from_file(str(tmp))
         except Exception:
             return pixbuf
