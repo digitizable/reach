@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- White culinary onion for Tor hop icon (not Tor Project branding colors). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- outer bulb -->
+  <ellipse cx="32" cy="36" rx="22" ry="20" fill="#f4f0e8" stroke="#c8c2b6" stroke-width="1.2"/>
+  <!-- mid layer -->
+  <ellipse cx="32" cy="36.5" rx="16.5" ry="15" fill="#faf8f3" stroke="#d4cec4" stroke-width="1"/>
+  <!-- inner layer -->
+  <ellipse cx="32" cy="37" rx="11" ry="10" fill="#ffffff" stroke="#ddd7cd" stroke-width="0.9"/>
+  <!-- core highlight -->
+  <ellipse cx="32" cy="37.2" rx="5.5" ry="5" fill="#fffef9" stroke="#e8e2d8" stroke-width="0.7"/>
+  <!-- vertical segment hints -->
+  <path d="M32 17.5 V56.5" fill="none" stroke="#e0dad0" stroke-width="0.8" opacity="0.9"/>
+  <path d="M24 20.5 Q22 36 24.5 52.5" fill="none" stroke="#e6e0d6" stroke-width="0.7" opacity="0.75"/>
+  <path d="M40 20.5 Q42 36 39.5 52.5" fill="none" stroke="#e6e0d6" stroke-width="0.7" opacity="0.75"/>
+  <!-- root nubs -->
+  <path d="M28 55.5 q2 3.5 4 3.5 q2 0 4-3.5" fill="none" stroke="#c4b8a4" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M26.5 55.2 l-1.2 2.4" fill="none" stroke="#c4b8a4" stroke-width="0.9" stroke-linecap="round"/>
+  <path d="M37.5 55.2 l1.2 2.4" fill="none" stroke="#c4b8a4" stroke-width="0.9" stroke-linecap="round"/>
+  <!-- stem / top -->
+  <path d="M29 18.5 C28 12.5 29.5 7 32 6.5 C34.5 7 36 12.5 35 18.5"
+        fill="#d8e0c8" stroke="#a8b898" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M31.2 18.2 C30.8 13.5 31.4 9 32 8.5 C32.6 9 33.2 13.5 32.8 18.2"
+        fill="#e8f0d8" stroke="none"/>
+  <!-- soft sheen -->
+  <ellipse cx="25" cy="30" rx="4" ry="7" fill="#ffffff" opacity="0.35"/>
+</svg>

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Spectre Desktop
+GenericName=Spectre Desktop
+Comment=Desktop frontend for Spectre (GTK4 / libadwaita)
+Exec=@EXEC@
+Icon=com.digitizable.spectre-desktop
+Terminal=false
+Categories=Network;Security;
+Keywords=spectre;vpn;tor;privacy;proxy;reality;
+StartupNotify=true
+StartupWMClass=com.digitizable.spectre-desktop
+DBusActivatable=false

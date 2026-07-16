@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Matches Grok accounts login vignette (from saved CSS):
+  radial-gradient(89.62% 87.88% at 50% 50%,
+    hsl(180 1% 11%) 0%, hsl(0 0% 0%) 100%)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="vignette" cx="50%" cy="42%" r="72%">
+      <stop offset="0%" stop-color="#1c1d1d"/>
+      <stop offset="55%" stop-color="#0e0e0e"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#vignette)"/>
+</svg>
