@@ -110,6 +110,37 @@ class AppsPage(Gtk.Box):
         self._status.set_single_line_mode(True)
         top.append(self._status)
 
+        # Clearnet path health (veth/NAT used by Exclude)
+        clearnet_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        clearnet_row.set_hexpand(True)
+        self._clearnet_label = Gtk.Label(label="Clearnet: not checked", xalign=0)
+        self._clearnet_label.add_css_class("muted")
+        self._clearnet_label.set_hexpand(True)
+        self._clearnet_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self._clearnet_label.set_tooltip_text(
+            "Health of the clearnet netns path used by Exclude "
+            "(veth + host NAT to Wi‑Fi/Ethernet, not Mullvad)."
+        )
+        clearnet_row.append(self._clearnet_label)
+
+        self._clearnet_check_btn = Gtk.Button(label="Check")
+        self._clearnet_check_btn.add_css_class("flat")
+        self._clearnet_check_btn.set_tooltip_text(
+            "Probe clearnet netns: health, ping, DNS, short speed sample"
+        )
+        self._clearnet_check_btn.connect("clicked", self._on_clearnet_check)
+        clearnet_row.append(self._clearnet_check_btn)
+
+        self._clearnet_repair_btn = Gtk.Button(label="Repair")
+        self._clearnet_repair_btn.add_css_class("flat")
+        self._clearnet_repair_btn.set_tooltip_text(
+            "Refresh clearnet nft + DNS (safe when healthy — no process kill). "
+            "Needs passwordless clearnet-netns from spectre setup-clearnet."
+        )
+        self._clearnet_repair_btn.connect("clicked", self._on_clearnet_repair)
+        clearnet_row.append(self._clearnet_repair_btn)
+        top.append(clearnet_row)
+
         search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._search = Gtk.SearchEntry()
         self._search.set_hexpand(True)
@@ -211,6 +242,59 @@ class AppsPage(Gtk.Box):
         self.reload()
         n = self._services.apps.count_system()
         self._toast(f"Found {n} installed application{'s' if n != 1 else ''}")
+
+    def _on_clearnet_check(self, *_a) -> None:
+        from core.clearnet_health import check_clearnet
+
+        self._clearnet_check_btn.set_sensitive(False)
+        self._clearnet_label.set_text("Clearnet: checking…")
+        # Process UI events so the label updates before the probe blocks.
+        try:
+            from gi.repository import GLib
+
+            while GLib.MainContext.default().pending():
+                GLib.MainContext.default().iteration(False)
+        except Exception:
+            pass
+        try:
+            h = check_clearnet(try_helper=True)
+        except Exception as exc:
+            self._clearnet_label.set_text(f"Clearnet: error · {exc}")
+            self._toast(str(exc))
+            self._clearnet_check_btn.set_sensitive(True)
+            return
+        self._clearnet_label.set_text(f"Clearnet: {h.summary}")
+        self._clearnet_label.set_tooltip_text(
+            "\n".join(h.detail_lines) if h.detail_lines else h.summary
+        )
+        self._clearnet_repair_btn.set_sensitive(h.can_repair)
+        self._clearnet_check_btn.set_sensitive(True)
+        self._toast(h.summary)
+
+    def _on_clearnet_repair(self, *_a) -> None:
+        from core.clearnet_health import repair_clearnet
+
+        self._clearnet_repair_btn.set_sensitive(False)
+        self._clearnet_label.set_text("Clearnet: repairing…")
+        try:
+            from gi.repository import GLib
+
+            while GLib.MainContext.default().pending():
+                GLib.MainContext.default().iteration(False)
+        except Exception:
+            pass
+        try:
+            ok, msg = repair_clearnet()
+        except Exception as exc:
+            ok, msg = False, str(exc)
+        self._clearnet_label.set_text(f"Clearnet: {msg}")
+        self._toast(msg)
+        self._clearnet_repair_btn.set_sensitive(True)
+        # Refresh status line after repair
+        try:
+            self._on_clearnet_check()
+        except Exception:
+            pass
 
     def _routing_mode(self) -> str:
         mode = (self._services.config.routing_mode or "system").strip().lower()
