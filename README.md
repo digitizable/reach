@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.6)
+## Status (0.3.7)
 
-Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing.
+Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, and core handoff for kill switch + system routing.
 
-**0.3.6:** Strict hop composition (invalid nestings blocked), path exit/underlay labels, remade default profiles. Pair with **spectred ≥ 0.3.9**. **0.3.5:** Stealth/REALITY copy. **0.3.4:** status flicker fix.
+**0.3.7:** **Exclude apps** — clearnet netns / `mullvad-exclude` carve-outs under system routing; pair with **spectred ≥ 0.3.10** (`spectre setup-clearnet`). **0.3.6:** Strict hop composition. **0.3.5:** Stealth/REALITY copy.
 
 ## What it is
 
@@ -35,39 +35,42 @@ That split answers “which VPN do I use?”: define it under **Backends**, bind
 | **Home** | Status, path diagram, Connect / Disconnect, local SOCKS when up |
 | **Profiles** | Path recipes; hop order; bind each hop to a backend |
 | **Backends** | Concrete adapters (fill provider/config/UUID/etc.) |
-| **Apps** | Applications that launch through the active path |
+| **Exclude apps** | Exclude-list split tunnel: run apps on clearnet (netns / marks) |
 | **Settings** | Core socket, API token, network/privacy policy, **Mullvad**, **updates**, tray, logging |
 | **Tray applet** | Panel lock icon (StatusNotifier) — right-click Connect / Disconnect / Disconnect and quit / Quit; left-click shows the window |
 
-### App routing
+### App routing (exclude-list split tunnel)
 
 **Settings → Routing mode** chooses how traffic uses the path:
 
 | Mode | Behavior |
 |------|----------|
-| **Entire system** (default) | Core redirects machine TCP/DNS through the path after Connect |
-| **Selected apps only** | Only **Apps** launcher / SOCKS clients use Spectre; rest of the OS stays clearnet *from Spectre’s point of view* |
+| **Entire system** (default) | Core redirects machine TCP/DNS through the path after Connect; optional kill switch |
+| **Selected apps only (SOCKS)** | No system redirect; only processes that use local SOCKS use Spectre |
 
-Under **Apps**, installed desktop applications are **detected automatically**. **Launch** sets `ALL_PROXY` / `HTTP(S)_PROXY` → Spectre SOCKS. Optional **proxychains** mode needs `proxychains-ng`.
+**Exclude apps** is the clearnet carve-out for **Entire system** mode (same idea as Mullvad split tunneling):
 
-### Mullvad and “selected apps only”
+1. Preferred: launch via **`clearnet-run`** into the **clearnet network namespace** (`cn-host` veth). Spectre kill switch / system routing already allow `cn-host` and Mullvad exclusion marks.
+2. Fallback: **`mullvad-exclude`** (setuid mark-based exclusion). Spectre skips the same marks so apps are not pulled back into the path.
 
-The **Mullvad app does not support include-only split tunneling** (only *exclude* apps from the VPN). Mullvad’s FAQ states they do not plan inverse split tunneling — VPN should be default, not exception.
+Desktop **never** runs `clearnet-netns teardown` (that kills every PID in the netns).
 
-So:
+**One-time install (all users)** — part of the **Spectre core**, not a Desktop-only hack:
 
-- **Mullvad app Connected** ⇒ the **whole system** is already on Mullvad (unless you exclude apps *out* of the tunnel).
-- Spectre’s **Mullvad SOCKS** hop (`10.64.0.1:1080`) only exists while that tunnel is up — it cannot offer “only Firefox through Mullvad, everything else clearnet.”
-- Spectre **apps-only** mode does not undo Mullvad’s full tunnel; it only skips Spectre’s own system redirect.
+```bash
+spectre setup-clearnet
+# or:  ./scripts/setup-clearnet-privs.sh   # from the spectre repo
+```
 
-**True selected-apps-through-Mullvad + rest clearnet:**
+That installs `/usr/local/libexec/spectre/clearnet-{run,netns}`, sudoers for passwordless exclude, creates the `clearnet` netns, and enables `spectre-clearnet-netns.service` on boot. Desktop `./install.sh` prompts for this when the helper is missing.
 
-1. Disconnect the **Mullvad app**
-2. Add a **VPN** backend with a Mullvad **WireGuard `.conf`**
-3. Spectre **Routing mode → Selected apps only**
-4. Connect, then **Apps → Launch** the apps you want on Mullvad
+Installed desktop applications are detected automatically. **Exclude (clearnet)** launches the selected app through the helper above (proxy env stripped).
 
-The home screen warns when a profile uses Mullvad app SOCKS in a way that conflicts with apps-only expectations.
+### Mullvad and exclude
+
+- **Mullvad app Connected** ⇒ whole system is on Mullvad unless you exclude apps out of the tunnel.
+- Spectre system routing / KS **do not** re-capture Mullvad exclusions (`ct mark 0x00000f41` / `meta mark 0x6d6f6c65`) or clearnet-netns traffic on `cn-host`.
+- Spectre **apps-only** mode only skips Spectre’s own system redirect; it does not undo Mullvad’s full tunnel.
 
 ### Connect preflight
 
@@ -84,7 +87,7 @@ The home screen warns when a profile uses Mullvad app SOCKS in a way that confli
 
 **Mullvad → local Tor:** the core does **not** SOCKS-nest `10.64.0.1` into `127.0.0.1:9050` (that dials loopback on the remote side and fails). Mullvad stays the full-tunnel underlay; Spectre dials system Tor. Traffic is still Host → Mullvad → Tor. Requires **spectred ≥ 0.3.4** for underlay routing, **≥ 0.3.6** so local SOCKS does not abort slow Tor circuit builds, and **≥ 0.3.7** so system-routing DNS uses Tor SOCKS RESOLVE (public DNS over TCP `:53` through Tor is blocked by most exits — browsers could not resolve names).
 
-**Hop composition is strict (desktop + spectred ≥ 0.3.9):** invalid nestings are blocked (e.g. REALITY → Mullvad app SOCKS). Mullvad app SOCKS may only be **first** (optional underlay before Tor/REALITY). REALITY and local Tor must be **last**. Self-check (operator node only): [anguish.sh personal REALITY check](https://anguish.sh/personal/reality-check).
+**Hop composition is strict (desktop + spectred ≥ 0.3.9):** invalid nestings are blocked (e.g. REALITY → Mullvad app SOCKS). Mullvad app SOCKS may only be **first** (optional underlay before Tor/REALITY). REALITY and local Tor must be **last**. Self-check (personal Hetzner node): run `~/Downloads/check-hetzner-reality.sh` (or `SOCKS=127.0.0.1:PORT` through Spectre).
 
 Structural checks (backend bound, enabled, complete) always run; list “ready” tags stay structural-only so scrolling Profiles stays snappy.
 

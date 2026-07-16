@@ -38,7 +38,8 @@ class AppConfig:
     start_minimized: bool = False
 
     # Network hygiene
-    # system = full-machine TCP/DNS via path (default); apps = SOCKS + Apps launcher only
+    # system = full-machine TCP/DNS via path (default); Exclude apps = clearnet carve-outs
+    # apps = no system redirect; only SOCKS clients use the path
     routing_mode: str = "system"  # system | apps
     kill_switch: bool = True  # only enforced in system mode
     block_ipv6: bool = True

@@ -34,9 +34,9 @@ NAV_ITEMS: tuple[NavItem, ...] = (
     ),
     NavItem(
         id="apps",
-        title="Open via path",
+        title="Exclude apps",
         icon_name="view-app-grid-symbolic",
-        tooltip="Open apps via Spectre SOCKS (works offline; network after Connect)",
+        tooltip="Run apps on clearnet (exclude from Spectre / tunnel)",
     ),
     NavItem(
         id="settings",

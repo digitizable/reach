@@ -28,7 +28,7 @@ DEFAULT_PROFILE_INFO: dict[str, str] = {
         "• ISP sees: a tunnel to Mullvad (WireGuard/OpenVPN-style), not your "
         "final websites\n"
         "• Requires: Mullvad app Connected (Spectre can auto-connect it)\n"
-        "• Not true “apps only”: while Mullvad is up, the whole machine is on Mullvad"
+        "• Full-tunnel while Mullvad is up — use Exclude apps (clearnet netns / mullvad-exclude) for carve-outs"
     ),
     "mullvad-reality": (
         "Mullvad into REALITY — underlay then stealth exit.\n\n"

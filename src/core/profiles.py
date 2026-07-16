@@ -134,7 +134,7 @@ DEFAULT_PROFILES: tuple[Profile, ...] = (
         notes=(
             "Mullvad is OS underlay; Spectre dials REALITY only. "
             "Exit IP is the REALITY server — not a Mullvad exit. "
-            "Check: https://anguish.sh/reality-check"
+            "Exit is the REALITY server — not a Mullvad exit."
         ),
     ),
     Profile(

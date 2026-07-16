@@ -185,6 +185,53 @@ fi
 info "Byte-compiling Python sources…"
 "$VENV_DIR/bin/python" -m compileall -q "$PROJECT_ROOT/src" || warn "compileall failed (non-fatal)"
 
+# Clearnet netns for Exclude apps — owned by Spectre core, not the Desktop tree.
+# If spectre CLI is present, offer / attempt the one-time privileged setup.
+setup_clearnet_hint() {
+  cat <<'HINT'
+
+Exclude apps (clearnet split tunnel) needs the Spectre core clearnet netns:
+
+  spectre setup-clearnet
+  # or from the spectre repo:
+  #   ./scripts/setup-clearnet-privs.sh
+
+That installs clearnet-run + clearnet-netns, creates the netns, sudoers, and
+an optional boot unit. Safe to re-run (healthy netns = nft refresh only).
+HINT
+}
+
+if check_cmd spectre; then
+  if [[ -x /usr/local/libexec/spectre/clearnet-run ]] || [[ -x /usr/local/bin/clearnet-run ]]; then
+    if [[ -e /run/netns/clearnet ]] || [[ -e /var/run/netns/clearnet ]]; then
+      info "Clearnet exclude helper already installed (netns present)."
+    else
+      warn "clearnet-run is installed but netns “clearnet” is missing."
+      info "Run: spectre setup-clearnet"
+    fi
+  else
+    info "Clearnet exclude netns not installed yet."
+    if [[ -t 0 ]]; then
+      printf 'Run “spectre setup-clearnet” now? [y/N] '
+      read -r ans || ans=""
+      if [[ "${ans}" =~ ^[Yy]$ ]]; then
+        if spectre setup-clearnet; then
+          info "Clearnet netns setup finished."
+        else
+          warn "setup-clearnet failed — you can re-run: spectre setup-clearnet"
+        fi
+      else
+        setup_clearnet_hint
+      fi
+    else
+      setup_clearnet_hint
+    fi
+  fi
+else
+  warn "spectre CLI not on PATH — core install recommended for Exclude apps."
+  setup_clearnet_hint
+fi
+
 cat <<EOF
 
 ────────────────────────────────────────────────────────
@@ -201,6 +248,10 @@ How to start
   • App menu: search for “${APP_NAME}”
   • Terminal: ${LAUNCHER_NAME}
   • Or:       ${LAUNCHER_PROJECT}
+
+One-time system privileges (if not already done)
+  • spectre setup-killswitch   # system routing + kill switch
+  • spectre setup-clearnet     # clearnet netns for Exclude apps
 
 Re-install after moving the project:
   cd ${PROJECT_ROOT} && ./install.sh

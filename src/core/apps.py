@@ -20,7 +20,7 @@ _DEFAULT_ICON = "application-x-executable-symbolic"
 
 @dataclass
 class RoutedApp:
-    """An application that can be launched through the active Spectre path."""
+    """An application that can be launched excluded from the Spectre path."""
 
     id: str
     name: str
