@@ -3,41 +3,118 @@
   
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#14161c"/>
-      <stop offset="45%" stop-color="#0e1015"/>
-      <stop offset="100%" stop-color="#08090c"/>
+      <stop offset="0%" stop-color="#151820"/>
+      <stop offset="50%" stop-color="#0e1016"/>
+      <stop offset="100%" stop-color="#090a0e"/>
     </linearGradient>
-    <radialGradient id="orb" cx="50%" cy="50%" r="55%">
-      <stop offset="0%" stop-color="#2e3440" stop-opacity="0.40"/>
-      <stop offset="100%" stop-color="#0a0b0e" stop-opacity="0"/>
+    <radialGradient id="orb" cx="35%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#323846" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#090a0e" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="type" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#d8dce6"/>
+      <stop offset="100%" stop-color="#e2e6ee"/>
     </linearGradient>
     <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#e8eaf0" stop-opacity="0.7"/>
-      <stop offset="55%" stop-color="#8b93a3" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#8b93a3" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#e8eaf0" stop-opacity="0.75"/>
+      <stop offset="50%" stop-color="#9aa3b5" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#9aa3b5" stop-opacity="0"/>
     </linearGradient>
   </defs>
 
+  <style type="text/css">
+    @font-face {
+      font-family: "InterBanner";
+      src: url("file:///home/paul/.local/share/fonts/inter/Inter-SemiBold.ttf") format("truetype");
+      font-weight: 600;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "InterBanner";
+      src: url("file:///home/paul/.local/share/fonts/inter/Inter-Medium.ttf") format("truetype");
+      font-weight: 500;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "InterBanner";
+      src: url("file:///home/paul/.local/share/fonts/inter/Inter-Bold.ttf") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+    }
+  </style>
+
   <rect width="980" height="240" fill="url(#bg)"/>
   <rect width="980" height="240" fill="url(#orb)"/>
-  <g transform="translate(92.00, 20.50)">
+  <g fill="none" stroke="#8b93a3" stroke-width="0.8" opacity="0.16">
+<path d="M94.0,132.0 L886.0,132.0"/>
+<path d="M82.0,156.0 L898.0,156.0"/>
+<path d="M70.0,180.0 L910.0,180.0"/>
+<path d="M58.0,204.0 L922.0,204.0"/>
+<path d="M46.0,228.0 L934.0,228.0"/>
+<path d="M0,240 L705.6,100.8" opacity="0.7"/>
+<path d="M80,240 L705.6,100.8" opacity="0.7"/>
+<path d="M160,240 L705.6,100.8" opacity="0.7"/>
+<path d="M240,240 L705.6,100.8" opacity="0.7"/>
+<path d="M320,240 L705.6,100.8" opacity="0.7"/>
+<path d="M400,240 L705.6,100.8" opacity="0.7"/>
+<path d="M480,240 L705.6,100.8" opacity="0.7"/>
+<path d="M560,240 L705.6,100.8" opacity="0.7"/>
+<path d="M640,240 L705.6,100.8" opacity="0.7"/>
+<path d="M720,240 L705.6,100.8" opacity="0.7"/>
+<path d="M800,240 L705.6,100.8" opacity="0.7"/>
+<path d="M880,240 L705.6,100.8" opacity="0.7"/>
+<path d="M960,240 L705.6,100.8" opacity="0.7"/>
+</g>
+<g fill="none" stroke="#9aa3b5" stroke-width="1" opacity="0.2">
+<line x1="764.4" y1="48.0" x2="862.4" y2="67.2"/>
+<line x1="862.4" y1="67.2" x2="901.6" y2="36.0"/>
+<line x1="764.4" y1="48.0" x2="803.6" y2="96.0"/>
+<line x1="862.4" y1="67.2" x2="931.0" y2="84.0"/>
+<line x1="901.6" y1="36.0" x2="931.0" y2="84.0"/>
+<line x1="803.6" y1="96.0" x2="901.6" y2="36.0"/>
+</g><g fill="#b8c0d0" opacity="0.26">
+<circle cx="764.4" cy="48.0" r="2.2"/>
+<circle cx="862.4" cy="67.2" r="2.2"/>
+<circle cx="901.6" cy="36.0" r="2.2"/>
+<circle cx="803.6" cy="96.0" r="2.2"/>
+<circle cx="931.0" cy="84.0" r="2.2"/>
+</g>
+<g fill="#ffffff" opacity="0.05">
+<circle cx="23" cy="39" r="0.9"/>
+<circle cx="120" cy="92" r="0.9"/>
+<circle cx="217" cy="145" r="0.9"/>
+<circle cx="314" cy="198" r="0.9"/>
+<circle cx="411" cy="31" r="0.9"/>
+<circle cx="508" cy="84" r="0.9"/>
+<circle cx="605" cy="137" r="0.9"/>
+<circle cx="702" cy="190" r="0.9"/>
+<circle cx="799" cy="23" r="0.9"/>
+<circle cx="896" cy="76" r="0.9"/>
+<circle cx="33" cy="129" r="0.9"/>
+<circle cx="130" cy="182" r="0.9"/>
+<circle cx="227" cy="15" r="0.9"/>
+<circle cx="324" cy="68" r="0.9"/>
+<circle cx="421" cy="121" r="0.9"/>
+<circle cx="518" cy="174" r="0.9"/>
+<circle cx="615" cy="227" r="0.9"/>
+<circle cx="712" cy="60" r="0.9"/>
+</g>
+  <g transform="translate(152.50,20.50)">
     
   <g id="lockup">
     <g transform="translate(0, 0) scale(0.39)">
       <path fill="#f0f1f4" d="M282.83 18.877c21.567 6.146 36.328 15.205 40.572 28.77-1.367.74-2.725 1.518-4.066 2.363-25.655 5.807-53.084 18.634-81.047 34.363 20.225-4.69 36.705-4.42 47.544 3.324-5.712 10.3-10.797 22.294-15.123 36.06-21.343 67.922-125.678-80.577-189.065-5.255C41.47 166.24 92.702 212.342 26.5 294.29c35.583-4.14 45.11-9.47 62.416-36.21 10.44-16.13 28.52-22.1 44.668-21.45-12.718 11.206-25.786 30.354-38.21 59.895 19.832-18.528 44.927-38.68 71.603-40.005.912 6.354-2.408 13.74-12.008 21.418C93.21 327.327 15.58 364.185 19.83 476.504c5.558-11.267 11.646-20.31 17.574-28.617 5.98 29.582 28.2 53.8 92.99 40.482-46.928-6.407-76.268-59.586-45.355-82.528 62.716-46.544 128.82 1.436 269.9-75.342 2.475-1.346 4.86-2.49 7.164-3.46-2.246 19.6-12.367 39.84-22.362 57.14 14.26-10.38 25.415-20.147 33.928-29.262 2.14 26.14-11.748 54.65-25.393 78.268 43.26-31.49 61.19-57.976 63.207-78.422 9.334 36.678-1.895 95.547-25.03 123.492 77.553-39.433 106.608-77.127 109.76-190.664 1.662-59.824-66.23-60.536-56.435-101.344 11.945-49.756 6.768-84.69-7.565-107.947-19.6-49.73-79.99-59.74-149.385-59.423zM89.8 47.684C54.69 47.534 45.233 83.056 55.724 117c17.146-51.504 70.414-44.24 111.17-34.367-33.282-25.005-58.707-34.87-77.096-34.95zm254.595 30.742c18.643 21.37 29.373 43.02 10.105 65.732-26.562-16.677-26.985-39.252-10.105-65.732zm74.494 48.6c3.655-.013 7.78.35 12.473 1.09-1.706 30.506-14.4 33-46.634 32.154 8.335-22.146 14.416-33.176 34.16-33.245zm-84.677 40.316c9.652.1 20.258 2.84 30.598 8.918 44.65 26.246 21.934 73.314-4.1 74.78-15.174.855 1.443-23.842-16.17-38.476-15.258-12.678-38.596 12.53-45.204-5.78-8.218-22.693 10.21-39.696 34.877-39.442zm60.18 246.168c-24.195 27.825-58.89 60.1-99.444 31.41 16.625 45.643 68.87 70.465 99.443-31.41z"/>
     </g>
-    <g transform="translate(210, 0)">
-      <text x="0" y="88" fill="url(#type)"
-            font-family="DejaVu Sans, Liberation Sans, sans-serif"
-            font-size="64" font-weight="600" letter-spacing="-1.2">Spectre Desktop</text>
-      <rect x="2" y="108" width="200" height="1.5" fill="url(#accent)" rx="1"/>
-      <text x="2" y="142" fill="#a0a8b8"
-            font-family="DejaVu Sans, Liberation Sans, sans-serif"
-            font-size="19" letter-spacing="1.1">DESKTOP UI FOR SPECTRE</text>
+    <g transform="translate(214, 0)">
+      <text x="0" y="86" fill="url(#type)"
+            font-family="InterBanner, Inter, sans-serif"
+            font-size="60" font-weight="600"
+            letter-spacing="-0.03em">Spectre Desktop</text>
+      <rect x="2" y="106" width="210" height="1.5" fill="url(#accent)" rx="1"/>
+      <text x="2" y="138" fill="#a4acbc"
+            font-family="InterBanner, Inter, sans-serif"
+            font-size="14" font-weight="500"
+            letter-spacing="0.12em">DESKTOP UI FOR SPECTRE</text>
     </g>
   </g>
 
