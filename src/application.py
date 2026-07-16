@@ -21,6 +21,7 @@ from core.updates import (
 )
 from services import Services
 from theme import apply_theme
+from tray import SpectreTray
 from window import SpectreWindow
 
 
@@ -34,11 +35,14 @@ class SpectreApplication(Adw.Application):
         self._window: SpectreWindow | None = None
         self.services = Services.create()
         self._update_check_inflight = False
+        self._tray: SpectreTray | None = None
+        self._tray_timer: int | None = None
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
         apply_theme()
         self._install_actions()
+        self._setup_tray()
 
     def do_activate(self) -> None:
         windows = self.get_windows()
@@ -54,9 +58,15 @@ class SpectreApplication(Adw.Application):
             return
 
         self._window = SpectreWindow(self, services=self.services)
-        if self.services.config.start_minimized:
+        if self.services.config.start_minimized or (
+            self.services.config.close_to_tray
+            and self._tray is not None
+            and self._tray.available
+            and self.services.config.start_minimized
+        ):
             self._window.present()
-            self._window.minimize()
+            if self.services.config.start_minimized:
+                self._window.minimize()
         else:
             self._window.present()
 
@@ -66,6 +76,7 @@ class SpectreApplication(Adw.Application):
             GLib.idle_add(self._auto_connect_once)
         # Deferred automatic update check (Settings toggle; default on).
         GLib.timeout_add_seconds(4, self._maybe_auto_update_check)
+        self._refresh_tray()
 
     def _ensure_core_once(self) -> bool:
         """Try to start spectred without blocking the UI for long."""
@@ -99,12 +110,132 @@ class SpectreApplication(Adw.Application):
         return False  # do not repeat
 
     def do_shutdown(self) -> None:
+        self.stop_tray()
         self.services.log("Application shutdown")
         Adw.Application.do_shutdown(self)
 
+    def _tray_quit(self) -> None:
+        """Quit from the tray menu — drop the panel icon first, then exit."""
+        self.services.log("Quit from tray")
+        # Remove SNI / bus name before tearing down the app so Cinnamon does
+        # not keep a ghost lock after the process is gone or half-quit.
+        self.stop_tray()
+        if self._window is not None:
+            try:
+                self._window.destroy()
+            except Exception:
+                pass
+            self._window = None
+        # Defer quit one tick so D-Bus unregistration can finish.
+        GLib.timeout_add(50, self._finish_quit)
+
+    def _finish_quit(self) -> bool:
+        self.quit()
+        return False
+
+    def _setup_tray(self) -> None:
+        if not self.services.config.tray_enabled:
+            return
+        tray = SpectreTray(
+            on_show=self._tray_show_window,
+            on_connect=self._tray_connect,
+            on_disconnect=self._tray_disconnect,
+            on_disconnect_quit=self._tray_disconnect_quit,
+            on_quit=self._tray_quit,
+        )
+        if tray.start():
+            self._tray = tray
+            if self._tray_timer is None:
+                self._tray_timer = GLib.timeout_add_seconds(2, self._tray_tick)
+            self.services.log("Tray applet started")
+            self._refresh_tray()
+        else:
+            self.services.log("Tray applet unavailable", level="warn")
+
+    def stop_tray(self) -> None:
+        """Tear down the tray icon completely (panel should drop it)."""
+        if self._tray_timer is not None:
+            GLib.source_remove(self._tray_timer)
+            self._tray_timer = None
+        if self._tray is not None:
+            self._tray.stop()
+            self._tray = None
+            self.services.log("Tray applet stopped")
+
+    def apply_tray_settings(self) -> None:
+        """Start/stop tray when Settings → Show tray icon changes."""
+        want = bool(self.services.config.tray_enabled)
+        have = self._tray is not None and self._tray.available
+        if want and not have:
+            self._setup_tray()
+        elif not want and have:
+            self.stop_tray()
+
+    def _tray_tick(self) -> bool:
+        self._refresh_tray()
+        return True
+
+    def _refresh_tray(self) -> None:
+        if self._tray is None or not self._tray.available:
+            return
+        try:
+            st = self.services.core.status()
+            detail = st.path_summary if st.state == CoreState.CONNECTED else (st.message or "")
+            if st.local_proxy and st.state == CoreState.CONNECTED:
+                detail = f"SOCKS {st.local_proxy}"
+            self._tray.update_state(st.state, detail)
+        except Exception:
+            pass
+
+    def _tray_show_window(self) -> None:
+        if self._window is None:
+            self.activate()
+            return
+        self._window.present()
+        if hasattr(self._window, "unminimize"):
+            try:
+                self._window.unminimize()
+            except Exception:
+                pass
+
+    def _tray_connect(self) -> None:
+        status, ready = self.services.connect_active()
+        if self._window is not None:
+            if not ready.ok:
+                self._window.toast(ready.summary)
+            elif status is not None and status.state == CoreState.CONNECTED:
+                self._window.toast("Connected")
+            elif status is not None:
+                self._window.toast(status.message or "Connect failed")
+            self._window.refresh_all()
+        self._refresh_tray()
+
+    def _tray_disconnect(self) -> None:
+        _status, toast = self.services.disconnect()
+        if self._window is not None:
+            self._window.toast(toast or "Disconnected")
+            self._window.refresh_all()
+        self._refresh_tray()
+
+    def _tray_disconnect_quit(self) -> None:
+        """Disconnect the path, then quit the desktop (tray + window)."""
+        try:
+            self.services.disconnect()
+        except Exception:
+            pass
+        self._tray_quit()
+
+    def should_close_to_tray(self) -> bool:
+        return bool(
+            self.services.config.close_to_tray
+            and self._tray is not None
+            and self._tray.available
+        )
+
     def _install_actions(self) -> None:
         quit_a = Gio.SimpleAction.new("quit", None)
-        quit_a.connect("activate", lambda *_: self.quit())
+        # Same path as tray Quit — always tear down the panel icon first.
+        quit_a.connect("activate", lambda *_: self._tray_quit())
         self.add_action(quit_a)
         self.set_accels_for_action("app.quit", ["<primary>q"])
 
@@ -115,6 +246,10 @@ class SpectreApplication(Adw.Application):
         updates_a = Gio.SimpleAction.new("check-updates", None)
         updates_a.connect("activate", self._on_check_updates_action)
         self.add_action(updates_a)
+
+        show_a = Gio.SimpleAction.new("show-window", None)
+        show_a.connect("activate", lambda *_: self._tray_show_window())
+        self.add_action(show_a)
 
     def _maybe_auto_update_check(self) -> bool:
         cfg = self.services.config

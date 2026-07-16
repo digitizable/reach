@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Spectre tray: connected — green closed lock (not Mullvad-branded) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Open rounded square body -->
+  <rect x="4.5" y="10.5" width="15" height="11" rx="2.5" fill="#16a34a"/>
+  <!-- Shackle (closed) -->
+  <path d="M8 10.5V7.2c0-2.2 1.8-4 4-4s4 1.8 4 4v3.3"
+        fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- Keyhole -->
+  <circle cx="12" cy="15.2" r="1.35" fill="#052e16"/>
+  <rect x="11.25" y="15.5" width="1.5" height="3.2" rx="0.5" fill="#052e16"/>
+</svg>

@@ -128,6 +128,20 @@ class SettingsPage(Gtk.Box):
         self._start_min.set_active(self._cfg.start_minimized)
         g.add(self._start_min)
 
+        self._tray = Adw.SwitchRow(
+            title="Show tray icon",
+            subtitle="Taskbar / panel applet (like Mullvad’s lock) for status and quick connect",
+        )
+        self._tray.set_active(self._cfg.tray_enabled)
+        g.add(self._tray)
+
+        self._close_tray = Adw.SwitchRow(
+            title="Close to tray",
+            subtitle="Window close hides Spectre; quit from the tray menu",
+        )
+        self._close_tray.set_active(self._cfg.close_to_tray)
+        g.add(self._close_tray)
+
         self._notify = Adw.SwitchRow(
             title="Notify on disconnect",
             subtitle="Desktop notification when the path goes down",
@@ -224,9 +238,10 @@ class SettingsPage(Gtk.Box):
         g.add(self._mv_status)
 
         self._mv_auto = Adw.SwitchRow(
-            title="Connect Mullvad automatically",
-            subtitle="When a path uses Mullvad tunnel SOCKS (10.64.0.1), run "
-            "mullvad connect before Spectre Connect",
+            title="Manage Mullvad with Connect/Disconnect",
+            subtitle="When a path uses Mullvad tunnel SOCKS (10.64.0.1): "
+            "mullvad connect before Spectre Connect, and mullvad disconnect "
+            "when you Disconnect Spectre",
         )
         self._mv_auto.set_active(self._cfg.mullvad_auto_connect)
         g.add(self._mv_auto)
@@ -411,6 +426,8 @@ class SettingsPage(Gtk.Box):
         cfg.reconnect_delay_sec = int(self._reconnect_delay.get_value())
         cfg.auto_connect = self._auto_connect.get_active()
         cfg.start_minimized = self._start_min.get_active()
+        cfg.tray_enabled = self._tray.get_active()
+        cfg.close_to_tray = self._close_tray.get_active()
         cfg.notify_on_disconnect = self._notify.get_active()
         cfg.mullvad_auto_connect = self._mv_auto.get_active()
         cfg.routing_mode = (
@@ -433,5 +450,25 @@ class SettingsPage(Gtk.Box):
         cfg.mtu = int(self._mtu.get_value())
 
         self._services.save_config()
+        # Apply tray on/off immediately so a broken icon can be removed without restart
+        app = None
+        try:
+            from gi.repository import Gtk
+
+            win = self.get_root() if hasattr(self, "get_root") else None
+            if win is not None and hasattr(win, "get_application"):
+                app = win.get_application()
+        except Exception:
+            app = None
+        if app is not None and hasattr(app, "apply_tray_settings"):
+            try:
+                app.apply_tray_settings()
+            except Exception:
+                pass
         if self._on_toast:
-            self._on_toast(self._services.with_reconnect_hint("Settings saved"))
+            msg = self._services.with_reconnect_hint("Settings saved")
+            if not self._services.config.tray_enabled:
+                msg = "Settings saved · tray icon removed"
+            elif self._services.config.tray_enabled:
+                msg = self._services.with_reconnect_hint("Settings saved · tray on")
+            self._on_toast(msg)

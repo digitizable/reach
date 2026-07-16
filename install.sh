@@ -131,6 +131,37 @@ info "Installing icon: $ICON_DST"
 mkdir -p "$ICON_DST_DIR"
 cp -f "$ICON_SRC" "$ICON_DST"
 
+# Tray status icons (green lock / red unlock) — SVG theme + flat PNG for SNI
+STATUS_SRC="$PROJECT_ROOT/data/icons/hicolor/scalable/status"
+STATUS_DST="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/status"
+if [[ -d "$STATUS_SRC" ]]; then
+  info "Installing tray status icons → $STATUS_DST"
+  mkdir -p "$STATUS_DST"
+  cp -f "$STATUS_SRC"/*.svg "$STATUS_DST/" 2>/dev/null || true
+fi
+TRAY_PNG_SRC="$PROJECT_ROOT/data/icons/tray"
+TRAY_PNG_DST="${XDG_DATA_HOME:-$HOME/.local/share}/spectre-desktop/tray-icons"
+if [[ -d "$TRAY_PNG_SRC" ]]; then
+  info "Installing tray PNGs → $TRAY_PNG_DST"
+  mkdir -p "$TRAY_PNG_DST"
+  cp -f "$TRAY_PNG_SRC"/*.png "$TRAY_PNG_DST/" 2>/dev/null || true
+  # Also seed common hicolor sizes so Cinnamon resolves theme names like blueman
+  for sz in 16 22 24 32 48; do
+    hdir="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/${sz}x${sz}/status"
+    mkdir -p "$hdir"
+    if check_cmd rsvg-convert; then
+      for svg in "$STATUS_SRC"/*.svg; do
+        [[ -f "$svg" ]] || continue
+        base=$(basename "$svg" .svg)
+        rsvg-convert -w "$sz" -h "$sz" "$svg" -o "$hdir/${base}.png" 2>/dev/null || true
+      done
+    elif [[ -f "$TRAY_PNG_SRC/spectre-tray-unlocked.png" ]]; then
+      # Fallback: copy 22/32 flat PNGs into theme dirs
+      cp -f "$TRAY_PNG_SRC"/*.png "$hdir/" 2>/dev/null || true
+    fi
+  done
+fi
+
 if [[ ! -f "$DESKTOP_SRC" ]]; then
   die "Desktop template not found: $DESKTOP_SRC"
 fi

@@ -38,6 +38,7 @@ class CoreStatus:
     routing_mode: str = ""
     routing_active: bool | None = None
     routing_detail: str = ""
+    mullvad: dict[str, Any] | None = None
     last_payload: dict[str, Any] | None = None
     environment: dict[str, Any] | None = None
 
@@ -45,6 +46,8 @@ class CoreStatus:
 # Health probes must stay short so UI refresh never freezes the main thread.
 _HEALTH_TIMEOUT = 0.4
 _START_POLL_TIMEOUT = 0.35
+_STATUS_TIMEOUT = 0.5
+_STATUS_CACHE_TTL = 0.35  # seconds — coalesce rapid chrome/tray/page polls
 
 
 def default_socket_path() -> str:
@@ -117,6 +120,7 @@ def _status_from_json(
     ks = data.get("kill_switch")
     ksa = data.get("kill_switch_active")
     ra = data.get("routing_active")
+    mv = data.get("mullvad")
     return CoreStatus(
         state=_parse_state(str(data.get("state") or "")),
         message=str(data.get("message") or ""),
@@ -133,6 +137,7 @@ def _status_from_json(
         routing_mode=str(data.get("routing_mode") or ""),
         routing_active=ra if isinstance(ra, bool) else None,
         routing_detail=str(data.get("routing_detail") or ""),
+        mullvad=mv if isinstance(mv, dict) else None,
         last_payload=last_payload,
         environment=env if isinstance(env, dict) else None,
     )
@@ -154,6 +159,8 @@ class CoreClient:
         self._selected_profile: str | None = None
         self._status = CoreStatus()
         self._last_payload: dict[str, Any] | None = None
+        self._status_cache: CoreStatus | None = None
+        self._status_cache_at: float = 0.0
 
     def _call(
         self,
@@ -274,9 +281,20 @@ class CoreClient:
                 continue
         return False
 
-    def refresh(self) -> CoreStatus:
+    def refresh(self, *, force: bool = False) -> CoreStatus:
+        """Fetch core status. Uses a short TTL cache so UI page switches stay snappy."""
+        now = time.monotonic()
+        if (
+            not force
+            and self._status_cache is not None
+            and (now - self._status_cache_at) < _STATUS_CACHE_TTL
+        ):
+            return self._status_cache
+
         profile = self._selected_profile
-        if not self._core_reachable():
+        # Prefer a single /v1/status call (includes health-ish liveness). Avoid a
+        # separate /health round-trip on every chrome update.
+        if not self.socket_path or not Path(self.socket_path).exists():
             self._status = CoreStatus(
                 state=CoreState.UNAVAILABLE,
                 message="Spectre core is not running",
@@ -288,10 +306,12 @@ class CoreClient:
                 leak_guard=None,
                 last_payload=self._last_payload,
             )
+            self._status_cache = self._status
+            self._status_cache_at = now
             return self._status
         try:
             code, data = self._call(
-                "GET", "/v1/status", timeout=min(2.0, float(self.timeout_sec))
+                "GET", "/v1/status", timeout=_STATUS_TIMEOUT
             )
             if code != 200:
                 msg = _error_message(data) or f"status HTTP {code}"
@@ -303,10 +323,14 @@ class CoreClient:
                     hops=[],
                     last_payload=self._last_payload,
                 )
+                self._status_cache = self._status
+                self._status_cache_at = now
                 return self._status
             self._status = _status_from_json(data, last_payload=self._last_payload)
             if self._status.active_profile:
                 self._selected_profile = self._status.active_profile
+            self._status_cache = self._status
+            self._status_cache_at = now
             return self._status
         except (OSError, TimeoutError, ConnectionError, socket.timeout) as exc:
             self._status = CoreStatus(
@@ -317,10 +341,16 @@ class CoreClient:
                 hops=[],
                 last_payload=self._last_payload,
             )
+            self._status_cache = self._status
+            self._status_cache_at = now
             return self._status
 
-    def status(self) -> CoreStatus:
-        return self.refresh()
+    def status(self, *, force: bool = False) -> CoreStatus:
+        return self.refresh(force=force)
+
+    def invalidate_status_cache(self) -> None:
+        self._status_cache = None
+        self._status_cache_at = 0.0
 
     def set_selected_profile(self, name: str | None) -> None:
         self._selected_profile = name
@@ -348,6 +378,7 @@ class CoreClient:
                 "hops": [],
                 "policy": {},
             }
+        self.invalidate_status_cache()
         try:
             code, data = self._call("POST", "/v1/connect", payload)
             if code >= 400:
@@ -376,18 +407,25 @@ class CoreClient:
 
     def disconnect(self) -> CoreStatus:
         self._last_payload = None
-        if not self._core_reachable():
-            return self.refresh()
+        self.invalidate_status_cache()
+        if not self.socket_path or not Path(self.socket_path).exists():
+            return self.refresh(force=True)
         try:
+            # Allow time for nft unlock (sudo helper) so disconnect never
+            # returns while system routing is still redirecting to dead ports.
             code, data = self._call(
-                "POST", "/v1/disconnect", timeout=min(5.0, float(self.timeout_sec))
+                "POST",
+                "/v1/disconnect",
+                timeout=min(20.0, max(8.0, float(self.timeout_sec))),
             )
             if code >= 400:
-                return self.refresh()
+                return self.refresh(force=True)
             self._status = _status_from_json(data, last_payload=None)
+            self._status_cache = self._status
+            self._status_cache_at = time.monotonic()
             return self._status
         except (OSError, TimeoutError, ConnectionError, socket.timeout):
-            return self.refresh()
+            return self.refresh(force=True)
 
 
 def _error_message(data: dict[str, Any]) -> str:

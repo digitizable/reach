@@ -76,6 +76,14 @@ class SpectreWindow(Adw.ApplicationWindow):
 
     def _on_close_request(self, *_a) -> bool:
         app = self.get_application()
+        # Prefer hide-to-tray (Mullvad-style) when the applet is running
+        if app is not None and hasattr(app, "should_close_to_tray"):
+            try:
+                if app.should_close_to_tray():
+                    self.set_visible(False)
+                    return True  # handled — do not destroy
+            except Exception:
+                pass
         if app is not None:
             GLib.idle_add(app.quit)
         return False
@@ -236,20 +244,39 @@ class SpectreWindow(Adw.ApplicationWindow):
             self._settings.refresh_update_meta()
 
     def refresh_all(self) -> None:
-        """Reload every page that caches data (used after external state changes)."""
+        """Reload pages after connect/disconnect or explicit data edits."""
         if self._home is not None:
-            self._home.refresh()
+            self._home.refresh(live=False)
         if self._profiles is not None:
             self._profiles.reload()
         if self._backends is not None:
             self._backends.reload()
+        # Apps list is large — only refresh status line unless search/filter needs rebuild
         if self._apps is not None:
-            self._apps.reload()
+            if hasattr(self._apps, "refresh_status_line"):
+                self._apps.refresh_status_line()
+            else:
+                self._apps.reload()
         self.refresh_update_settings()
         self._sync_chrome()
+        app = self.get_application()
+        if app is not None and hasattr(app, "_refresh_tray"):
+            try:
+                app._refresh_tray()
+            except Exception:
+                pass
 
     def _on_data_changed(self) -> None:
-        self.refresh_all()
+        # Profiles/backends edits — don't rediscover every installed app.
+        if self._home is not None:
+            self._home.refresh(live=False)
+        if self._profiles is not None:
+            self._profiles.reload()
+        if self._backends is not None:
+            self._backends.reload()
+        if self._apps is not None and hasattr(self._apps, "refresh_status_line"):
+            self._apps.refresh_status_line()
+        self._sync_chrome()
 
     def _on_nav(self, button: Gtk.ToggleButton, page_id: str) -> None:
         if button.get_active():
@@ -260,19 +287,33 @@ class SpectreWindow(Adw.ApplicationWindow):
             return
         if self._page_stack.get_child_by_name(page_id) is None:
             return
+        # Fast path: only swap the stack. Do not rebuild lists / re-probe network
+        # on every sidebar click (that was freezing the UI).
         self._page_stack.set_visible_child_name(page_id)
         self._set_nav_selected(page_id)
-
-        if page_id == "home" and self._home is not None:
-            self._home.refresh()
-        elif page_id == "profiles" and self._profiles is not None:
-            self._profiles.reload()
-        elif page_id == "backends" and self._backends is not None:
-            self._backends.reload()
-        elif page_id == "apps" and self._apps is not None:
-            self._apps.reload()
-
         self._sync_chrome()
+
+        # Cheap, deferred updates only where the page needs a status line tweak
+        if page_id == "home" and self._home is not None:
+            GLib.idle_add(self._idle_refresh_home)
+        elif page_id == "apps" and self._apps is not None:
+            GLib.idle_add(self._idle_refresh_apps_status)
+
+    def _idle_refresh_home(self) -> bool:
+        if self._home is not None:
+            try:
+                self._home.refresh(live=False)
+            except Exception:
+                pass
+        return False
+
+    def _idle_refresh_apps_status(self) -> bool:
+        if self._apps is not None and hasattr(self._apps, "refresh_status_line"):
+            try:
+                self._apps.refresh_status_line()
+            except Exception:
+                pass
+        return False
 
     def _sync_chrome(self) -> None:
         st = self._services.core.status()

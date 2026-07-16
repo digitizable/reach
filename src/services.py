@@ -64,6 +64,10 @@ class AppConfig:
     # Mullvad (official CLI integration)
     mullvad_auto_connect: bool = True  # connect Mullvad if SOCKS hop needs it
 
+    # Tray applet
+    tray_enabled: bool = True
+    close_to_tray: bool = True
+
     # Advanced
     mtu: int = 1280
     bind_address: str = "127.0.0.1"
@@ -270,7 +274,65 @@ class Services:
         )
         return status, ready
 
-    def disconnect(self) -> CoreStatus:
+    def disconnect(self) -> tuple[CoreStatus, str]:
+        """Tear down Spectre path and restore clearnet.
+
+        Returns (status, toast_message). System routing is flushed by the core;
+        we also run ``spectre unlock`` as a belt-and-suspenders clearnet restore.
+        When the active profile uses Mullvad tunnel SOCKS and auto-connect is
+        on, we disconnect Mullvad too so Disconnect is a full stop (not
+        "Spectre down but Mullvad still up").
+        """
+        from core import mullvad as mv
+        from core.readiness import profile_uses_mullvad_app_socks
+
+        profile = self.active_profile()
+        used_mullvad = profile_uses_mullvad_app_socks(profile, self.backends)
         status = self.core.disconnect()
         self.log("Disconnect requested")
-        return status
+
+        # Restore clearnet if nft REDIRECT/DROP tables were left behind.
+        unlock_note = self._unlock_network()
+        if unlock_note:
+            self.log(unlock_note)
+
+        parts = ["Spectre path stopped"]
+        if used_mullvad and self.config.mullvad_auto_connect:
+            ok, msg = mv.disconnect()
+            if ok:
+                self.log("Mullvad disconnect requested (paired with Spectre Disconnect)")
+                parts.append("Mullvad disconnect requested")
+            else:
+                self.log(f"Mullvad disconnect: {msg}", level="warn")
+                parts.append("Mullvad still connected — use Settings or Mullvad app")
+        elif used_mullvad:
+            parts.append("Mullvad left connected (auto-manage off)")
+
+        return status, " · ".join(parts)
+
+    def _unlock_network(self) -> str:
+        """Best-effort clearnet restore via spectre CLI (nft unlock helper)."""
+        import shutil
+        import subprocess
+
+        exe = shutil.which("spectre")
+        if not exe:
+            home = Path.home() / ".local" / "bin" / "spectre"
+            if home.is_file():
+                exe = str(home)
+        if not exe:
+            return ""
+        try:
+            proc = subprocess.run(  # noqa: S603
+                [exe, "unlock"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return f"unlock failed: {exc}"
+        out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+        if proc.returncode != 0:
+            return f"unlock exit {proc.returncode}: {out or 'failed'}"
+        return "network unlock ok"

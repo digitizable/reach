@@ -93,10 +93,10 @@ class HomePage(Gtk.Box):
     def _on_primary(self, *_a) -> None:
         st = self._services.core.status()
         if st.state == CoreState.CONNECTED or st.state == CoreState.CONNECTING:
-            self._services.disconnect()
+            _status, toast = self._services.disconnect()
             self.refresh()
             if self._on_toast:
-                self._on_toast("Disconnected")
+                self._on_toast(toast or "Disconnected")
             if self._on_state_changed:
                 self._on_state_changed()
             return
@@ -153,14 +153,15 @@ class HomePage(Gtk.Box):
             else:
                 self._on_toast(status.message or status.state.value)
 
-    def refresh(self) -> None:
+    def refresh(self, *, live: bool = False) -> None:
+        """Update home chrome. live=True only for Connect preflight (expensive)."""
         st = self._services.core.status()
         kind = kind_from_core(st.state)
         profile = self._services.active_profile()
-        # Live probes when idle so Connect doesn't surprise the user;
-        # skip heavy probes while already connected (path owns the network).
+        # Structural readiness for display; live TCP/CLI probes stay off the
+        # page-switch path so the sidebar stays responsive.
         active = st.state == CoreState.CONNECTED
-        ready = self._services.readiness(live=not active)
+        ready = self._services.readiness(live=live and not active)
 
         titles = {
             CoreState.UNAVAILABLE: "Core offline",
@@ -221,15 +222,13 @@ class HomePage(Gtk.Box):
                 if socks and port:
                     detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
-        # Official Mullvad status when CLI is present
-        try:
-            from core.mullvad import probe as mullvad_probe
-
-            mv = mullvad_probe()
-            if mv.available and mv.summary and mv.summary not in detail:
-                detail = f"{detail} · {mv.summary}" if detail else mv.summary
-        except Exception:
-            pass
+        # Prefer Mullvad block from core status (cached server-side) — avoid a
+        # second `mullvad status` subprocess on every home refresh / page switch.
+        mv = getattr(st, "mullvad", None)
+        if isinstance(mv, dict) and mv.get("available") and mv.get("summary"):
+            summary = str(mv.get("summary") or "")
+            if summary and summary not in detail:
+                detail = f"{detail} · {summary}" if detail else summary
 
         for k in ("offline", "idle", "busy", "live", "unknown", "bad"):
             self._dot.remove_css_class(f"state-{k}")

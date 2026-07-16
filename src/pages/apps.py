@@ -134,6 +134,21 @@ class AppsPage(Gtk.Box):
         n = self._services.apps.count_system()
         self._toast(f"Found {n} installed application{'s' if n != 1 else ''}")
 
+    def refresh_status_line(self) -> None:
+        """Update path/count line without rebuilding the app list (fast page switch)."""
+        st = self._services.core.status()
+        n_sys = self._services.apps.count_system()
+        n_custom = len(self._services.apps.list(include_system=False))
+        base = f"{n_sys} installed"
+        if n_custom:
+            base += f" · {n_custom} custom"
+        if st.state == CoreState.CONNECTED and st.local_proxy:
+            self._status.set_text(f"{base} · path up · SOCKS {st.local_proxy}")
+        elif st.state == CoreState.CONNECTED:
+            self._status.set_text(f"{base} · path up · waiting for local SOCKS")
+        else:
+            self._status.set_text(f"{base} · connect on Home before launching")
+
     def reload(self) -> None:
         # Default list hides disabled/hidden apps unless searching by name empty
         # and we want to show only enabled. Allow filter to still find them when
@@ -148,18 +163,7 @@ class AppsPage(Gtk.Box):
         clear_box(self._list)
         self._row_buttons.clear()
 
-        st = self._services.core.status()
-        n_sys = self._services.apps.count_system()
-        n_custom = len(self._services.apps.list(include_system=False))
-        base = f"{n_sys} installed"
-        if n_custom:
-            base += f" · {n_custom} custom"
-        if st.state == CoreState.CONNECTED and st.local_proxy:
-            self._status.set_text(f"{base} · path up · SOCKS {st.local_proxy}")
-        elif st.state == CoreState.CONNECTED:
-            self._status.set_text(f"{base} · path up · waiting for local SOCKS")
-        else:
-            self._status.set_text(f"{base} · connect on Home before launching")
+        self.refresh_status_line()
 
         if not apps:
             if self._filter.strip():

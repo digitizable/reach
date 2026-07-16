@@ -8,9 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.0)
+## Status (0.3.1)
 
-Official **Mullvad VPN** integration (CLI status, auto-connect for SOCKS hops, Settings controls), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing (with Mullvad split-tunnel respect).
+Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, Apps launcher, update checks, and core handoff for kill switch + system routing.
+
+**0.3.1 hotfix:** disconnect no longer blackholes clearnet; tray Quit removes the panel icon; right-click menu works on Cinnamon.
 
 ## What it is
 
@@ -34,7 +36,8 @@ That split answers “which VPN do I use?”: define it under **Backends**, bind
 | **Profiles** | Path recipes; hop order; bind each hop to a backend |
 | **Backends** | Concrete adapters (fill provider/config/UUID/etc.) |
 | **Apps** | Applications that launch through the active path |
-| **Settings** | Core socket, API token, network/privacy policy, **updates** (GitHub), logging |
+| **Settings** | Core socket, API token, network/privacy policy, **Mullvad**, **updates**, tray, logging |
+| **Tray applet** | Panel lock icon (StatusNotifier) — right-click Connect / Disconnect / Disconnect and quit / Quit; left-click shows the window |
 
 ### App routing
 
