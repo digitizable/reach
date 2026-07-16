@@ -1,67 +1,86 @@
 # Spectre Desktop
 
-Desktop UI for [Spectre](https://github.com/digitizable/spectre): profiles, backends, connect/disconnect, and path status over the local core.
+GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre): manage **backends** and **path profiles**, then Connect through the local **spectred** core.
 
-Linux only for now (GTK 4 + libadwaita).
+Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Shape
+## What it is
 
-| Piece | Role |
-|-------|------|
-| **spectre-desktop** | GTK shell — profiles, backends, settings, Connect |
-| **spectred** (sibling repo) | Headless core — brings the path up, local SOCKS |
+Spectre Desktop is a **thin operator shell**, not the tunnel itself:
 
-The desktop owns configuration (CRUD, readiness). The core owns the live tunnel.
+| Responsibility | Owner |
+|----------------|--------|
+| Backend catalog (VPN, REALITY, Tor, Proxy drafts) | Desktop |
+| Profiles (ordered hops + which backend each hop uses) | Desktop |
+| Readiness (“can we hand this to the core?”) | Desktop |
+| Settings / policy hints (kill switch, DNS, …) | Desktop (stored; core enforces later) |
+| Live path, SOCKS entry, adapter processes | **spectred** core |
+
+That split answers “which VPN do I use?”: define it under **Backends**, bind it on a hop under **Profiles**, then **Connect**.
 
 ## Pages
 
 | Page | Role |
 |------|------|
-| Home | Status, path map, Connect / Disconnect |
-| Profiles | Path recipes + hop ↔ backend binding |
-| Backends | Adapter catalog (VPN, REALITY, Tor, Proxy) |
-| Settings | Core socket, policy hints, logging |
+| **Home** | Status, path diagram, Connect / Disconnect, local SOCKS when up |
+| **Profiles** | Path recipes; hop order; bind each hop to a backend |
+| **Backends** | Concrete adapters (fill provider/config/UUID/etc.) |
+| **Settings** | Core socket, API token, network/privacy policy hints, logging |
 
-## Core wiring
+Defaults seed example backends (draft VPN, draft REALITY, **System Tor**) and sample profiles. **Tor only** is ready out of the box if Tor is listening on `9050`.
 
-Default socket: `$XDG_RUNTIME_DIR/spectre/spectre.sock`  
-(override in Settings or `SPECTRE_SOCKET`)
+## How Connect works
 
-On Connect, the desktop:
+1. Desktop checks readiness (every hop has an **enabled, complete** backend).
+2. If the core is offline, it tries `systemctl --user start spectred`, then `spectre start`, then a sibling/repo `spectred` binary.
+3. `POST /v1/connect` with the full payload: profile, hops, backend objects, policy.
+4. UI shows core state; when connected, the detail line includes **SOCKS `host:port`**.
 
-1. Validates the active profile (every hop bound + complete)
-2. Starts `spectred` if needed (`spectre start` / neighbour `programs/spectre/bin`)
-3. `POST /v1/connect` with the full payload (hops + backends + policy)
-4. Shows core status and the local SOCKS address
+Incomplete backends (e.g. WireGuard without a `.conf`, REALITY without UUID) stay drafts — Connect stays blocked until fixed.
 
-Install the core first:
+### Completeness rules (desktop)
+
+| Kind | Ready when |
+|------|------------|
+| **Tor** | System Tor, or custom SOCKS host/port |
+| **Proxy** | Host + port |
+| **VPN (WireGuard)** | Path to a `.conf` (Browse… in the editor) |
+| **REALITY** | Server + public key + **UUID** |
+
+## Core dependency
+
+Install and run the core first (or let the desktop start it):
 
 ```bash
-cd ../spectre && ./install.sh    # binaries + user systemd unit
+cd ../spectre   # or clone digitizable/spectre
+./install.sh    # → ~/.local/bin + systemd --user unit
 spectre health
-# or without systemd: make install && spectre start
 ```
 
-The desktop will try `systemctl --user start spectred` / `spectre start` on
-launch and Connect if the core is offline.
+| Default | Value |
+|---------|--------|
+| Socket | `$XDG_RUNTIME_DIR/spectre/spectre.sock` |
+| Override | Settings → Socket path, or `SPECTRE_SOCKET` |
 
-## Data
+See the core README and [API docs](https://github.com/digitizable/spectre/blob/main/docs/API.md) for hop behavior and limitations (local SOCKS only; no system-wide kill switch yet).
 
-| Path | Contents |
-|------|----------|
-| `~/.local/share/spectre-desktop/backends.json` | Backend catalog |
-| `~/.local/share/spectre-desktop/profiles.json` | Profiles + hop bindings |
-| `~/.config/spectre-desktop/config.json` | Settings + last profile |
-| `~/.local/share/spectre-desktop/desktop.log` | Optional desktop log |
+## Install & run
 
-## Run (Linux)
+Dependencies (Debian/Ubuntu/Mint-style):
+
+```bash
+sudo apt install -y \
+  python3 python3-venv python3-gi python3-gi-cairo \
+  gir1.2-gtk-4.0 gir1.2-adw-1 \
+  libadwaita-1-0 libgtk-4-1
+```
 
 ```bash
 ./install.sh
 spectre-desktop
 ```
 
-Or without install:
+Dev without install:
 
 ```bash
 python3 -m venv .venv --system-site-packages
@@ -69,6 +88,32 @@ source .venv/bin/activate
 python src/main.py
 ```
 
-## License
+`./install.sh --check` only verifies GTK/Adw bindings.
 
-[GNU GPLv3](LICENSE)
+## Data
+
+| Path | Contents |
+|------|----------|
+| `~/.local/share/spectre-desktop/backends.json` | Backend catalog |
+| `~/.local/share/spectre-desktop/profiles.json` | Profiles + hop bindings |
+| `~/.config/spectre-desktop/config.json` | Settings + last active profile |
+| `~/.local/share/spectre-desktop/desktop.log` | Optional desktop log |
+
+Uninstall: `./uninstall.sh`.
+
+## Project layout
+
+```
+src/
+  main.py application.py window.py   # app shell
+  services.py                        # config + stores + connect_active
+  core/                              # backends, profiles, readiness, client
+  pages/                             # home, profiles, backends, settings
+  widgets/                           # editors, path graph, chrome
+data/assets/                         # brand + Tor/REALITY marks
+```
+
+## Related
+
+- [Spectre core](https://github.com/digitizable/spectre) — `spectred` + CLI  
+- License: [GNU GPLv3](LICENSE)
