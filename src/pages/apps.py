@@ -71,8 +71,7 @@ class AppsPage(Gtk.Box):
             "Launch apps outside Spectre (clearnet). Preferred: clearnet-run "
             "netns. Fallback: mullvad-exclude. Setup once: spectre setup-clearnet. "
             "Firefox: first exclude copies your default profile into a Spectre-only "
-            "profile (under this user account); menu Firefox keeps the real default. "
-            "Excluded windows use a blue wireframe-globe taskbar badge when the DE supports it."
+            "profile (under this user account); menu Firefox keeps the real default."
         )
         top.append(self._hint)
 

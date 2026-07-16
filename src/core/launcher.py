@@ -596,7 +596,7 @@ def argv_for_separate_instance(
     note = "new process"
     private_xdg = False
     inst = _instance_dir(app, tag=tag)
-    # WM class is applied later by prepare_exclude_window_identity (unique + badge).
+    # WM class is applied later by prepare_exclude_window_identity.
 
     # flatpak run <app-id> [args…] — still a new host process; instance
     # isolation inside the sandbox is limited without app-specific flags.
@@ -728,12 +728,12 @@ def launch_app(
     app_argv, instance_note, private_xdg = argv_for_separate_instance(
         app_argv, app, tag="exclude"
     )
-    # Unique WM class + badged .desktop so the taskbar can show a clearnet mark
+    # Unique WM class + .desktop (normal app icon, no badge overlay)
     try:
         from core.exclude_badge import prepare_exclude_window_identity
 
-        app_argv, badge_note = prepare_exclude_window_identity(app, app_argv)
-        instance_note = f"{instance_note} · {badge_note}"
+        app_argv, id_note = prepare_exclude_window_identity(app, app_argv)
+        instance_note = f"{instance_note} · {id_note}"
     except Exception:
         pass
     env = _launch_env_for_exclude(app, private_xdg=private_xdg)

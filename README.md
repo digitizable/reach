@@ -8,11 +8,11 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.9)
+## Status (0.3.10)
 
 Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, and core handoff for kill switch + system routing.
 
-**0.3.9:** DNS defaults prefer Mullvad tunnel DNS (`10.64.0.1`); pair with **spectred ≥ 0.3.11**. **0.3.8:** Exclude apps (instances, Firefox profile copy, Tabler badge). **0.3.7:** clearnet netns.
+**0.3.10:** Exclude apps use the normal app icon (no globe badge). **0.3.9:** DNS defaults prefer Mullvad tunnel DNS (`10.64.0.1`); pair with **spectred ≥ 0.3.11**. **0.3.8:** Exclude instances / Firefox profile copy.
 
 ## What it is
 
