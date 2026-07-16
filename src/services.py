@@ -44,7 +44,9 @@ class AppConfig:
     kill_switch: bool = True  # only enforced in system mode
     block_ipv6: bool = True
     dns_mode: str = "remote"  # system | remote | custom
-    dns_servers: str = "1.1.1.1, 9.9.9.9"
+    # Prefer Mullvad tunnel DNS (UDP 10.64.0.1). Public resolvers are TCP
+    # fallback only — using them alone makes mullvad.net/check report a DNS "leak".
+    dns_servers: str = "10.64.0.1"
     leak_guard: bool = True
     allow_lan: bool = False
 

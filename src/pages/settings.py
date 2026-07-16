@@ -355,10 +355,17 @@ class SettingsPage(Gtk.Box):
         self._dns_mode.set_selected(
             modes.get(self._cfg.dns_mode.lower(), 1)
         )
+        self._dns_mode.set_subtitle(
+            "Remote/Custom: system DNS via the path. For Mullvad, use "
+            "10.64.0.1 only (tunnel DNS). Public resolvers (1.1.1.1, …) make "
+            "mullvad.net/check report a DNS “leak” even when traffic is tunneled."
+        )
         g.add(self._dns_mode)
 
-        self._dns_servers = Adw.EntryRow(title="Custom DNS servers")
+        self._dns_servers = Adw.EntryRow(title="DNS servers (remote / custom)")
         self._dns_servers.set_text(self._cfg.dns_servers)
+        if hasattr(self._dns_servers, "set_show_apply_button"):
+            self._dns_servers.set_show_apply_button(False)
         g.add(self._dns_servers)
 
         self._leak = Adw.SwitchRow(
