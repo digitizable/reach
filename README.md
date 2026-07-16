@@ -133,4 +133,16 @@ data/assets/                         # brand + Tor/REALITY marks
 ## Related
 
 - [Spectre core](https://github.com/digitizable/spectre) — `spectred` + CLI  
-- License: [GNU GPLv3](LICENSE)
+
+## Donate
+
+Optional support for development:
+
+| | Address |
+|--|---------|
+| **BTC** | `sp1qqgly4w3je7m64xh72047u04hwyflyqqf3rfmxchmyht5dndpas4txqsuj9e0jc9l3yql9c3k5el3quyxfh6kr6c9zplmaavj59kuk5kny5jf7cjr` |
+| **XMR** | `89SWJrVXxEgHNiVNSEdjWsXMtRzpzoUX7ebToit9x7iuQADTZh5BGVjTywoQ4gn3SuSEzDhXpCEybi17HpwgYs7v2Xfjdue` |
+
+## License
+
+[GNU GPLv3](LICENSE)
