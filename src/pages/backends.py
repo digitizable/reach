@@ -35,25 +35,22 @@ class BackendsPage(Gtk.Box):
         new_btn = Gtk.Button()
         new_btn.set_icon_name("list-add-symbolic")
         new_btn.add_css_class("flat")
-        new_btn.set_tooltip_text("New backend")
+        new_btn.set_tooltip_text("New adapter")
         new_btn.connect("clicked", self._on_new)
-        self.append(page_header("Backends", end=new_btn))
+        self.append(
+            page_header(
+                "Adapters",
+                subtitle="VPN, Tor, REALITY, proxy — what hops can use.",
+                end=new_btn,
+            )
+        )
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         body.add_css_class("page-body")
         body.set_valign(Gtk.Align.START)
 
-        hint = Gtk.Label(
-            label="Backends are the concrete adapters hops bind to "
-            "(which VPN, which Tor, which REALITY node).",
-            wrap=True,
-            xalign=0,
-        )
-        hint.add_css_class("muted")
-        body.append(hint)
-
         self._empty = Gtk.Label(
-            label="No backends yet.\nAdd a VPN, REALITY, Tor, or Proxy adapter.",
+            label="No adapters yet.\nAdd a VPN, REALITY, Tor, or proxy.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")

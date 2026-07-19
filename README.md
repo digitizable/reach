@@ -12,7 +12,7 @@ Linux only for now.
 
 **Formerly Spectre Desktop** (config under `~/.config/spectre-desktop` and `~/.local/share/spectre-desktop` migrates to `reach` on first run).
 
-## Status (0.4.0)
+## Status (0.4.1)
 
 Official **Mullvad VPN** integration, **tray applet**, routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, **Reach China / territories** UI, and core handoff for kill switch + system routing.
 
@@ -35,13 +35,14 @@ Define backends, bind them on profile hops, then **Connect**.
 
 | Page | Role |
 |------|------|
-| **Home** | Status, path diagram, Connect / Disconnect, local SOCKS when up |
-| **Profiles** | Path recipes; hop order; bind each hop to a backend |
-| **Backends** | Concrete adapters (provider / config / UUID / …) |
-| **Exclude apps** | Exclude-list split tunnel: run apps on clearnet (netns / marks) |
-| **Reach China** | Ingress + reverse doors; Mullvad/VPN underlay; lab export. Plan: [`docs/CHINA_INGRESS.md`](docs/CHINA_INGRESS.md) |
-| **Settings** | Core socket, API token, network/privacy policy, **Mullvad**, **updates**, tray, logging |
-| **Tray applet** | Panel lock icon (StatusNotifier) — Connect / Disconnect / Quit |
+| **Home** | Status, path diagram, path picker, Connect / Disconnect |
+| **Paths** | Path recipes (profiles); hop order; bind each hop to an adapter |
+| **Adapters** | VPN, REALITY, Tor, proxy backends hops can use |
+| **Doors** | Territory ingress — inbound host or dial-out (Inverse Snowflake) |
+| **Apps** | Exclude-list split tunnel: selected apps on clearnet |
+| **Tools** | Drift · Mirage · Sounding (lab companions) |
+| **Settings** | Core socket, routing, Mullvad, tray, updates |
+| **Tray** | StatusNotifier lock — Connect / Disconnect / Quit |
 
 ### App routing (exclude-list split tunnel)
 

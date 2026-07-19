@@ -71,16 +71,20 @@ class HomePage(Gtk.Box):
         self._path_host.set_hexpand(False)
         body.append(self._path_host)
 
-        # Profile name + info (i) button
+        # Path picker + info
         profile_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         profile_row.add_css_class("home-profile-row")
         profile_row.set_halign(Gtk.Align.CENTER)
         profile_row.set_valign(Gtk.Align.CENTER)
 
-        self._profile_label = Gtk.Label(label="", xalign=0.5)
-        self._profile_label.add_css_class("home-profile")
-        self._profile_label.set_halign(Gtk.Align.CENTER)
-        profile_row.append(self._profile_label)
+        self._profile_dd = Gtk.DropDown()
+        self._profile_dd.add_css_class("home-profile-dd")
+        self._profile_dd.set_size_request(200, -1)
+        self._profile_dd.set_tooltip_text("Active path")
+        self._profile_dd.connect("notify::selected", self._on_profile_picked)
+        self._profile_ids: list[str] = []
+        self._profile_dd_block = False
+        profile_row.append(self._profile_dd)
 
         self._info_btn = Gtk.Button()
         self._info_btn.add_css_class("flat")
@@ -92,6 +96,16 @@ class HomePage(Gtk.Box):
         self._info_btn.connect("clicked", self._on_info)
         profile_row.append(self._info_btn)
         body.append(profile_row)
+
+        # Next-step chip when Connect is blocked or empty
+        self._next = Gtk.Button()
+        self._next.add_css_class("flat")
+        self._next.add_css_class("home-next")
+        self._next.set_halign(Gtk.Align.CENTER)
+        self._next.set_visible(False)
+        self._next.connect("clicked", self._on_next)
+        self._next_target: str | None = None
+        body.append(self._next)
 
         cta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         cta_row.set_halign(Gtk.Align.CENTER)
@@ -115,6 +129,91 @@ class HomePage(Gtk.Box):
     def _root_window(self) -> Gtk.Window | None:
         w = self.get_root()
         return w if isinstance(w, Gtk.Window) else None
+
+    def _on_profile_picked(self, *_a) -> None:
+        if self._profile_dd_block:
+            return
+        idx = int(self._profile_dd.get_selected())
+        if idx < 0 or idx >= len(self._profile_ids):
+            return
+        pid = self._profile_ids[idx]
+        if pid == "__none__":
+            return
+        if self._services.config.last_profile_id == pid:
+            return
+        self._services.config.last_profile_id = pid
+        try:
+            self._services.save_config()
+        except Exception:
+            pass
+        self.refresh(force_core=False)
+        if self._on_state_changed:
+            self._on_state_changed()
+
+    def _on_next(self, *_a) -> None:
+        if self._next_target:
+            self._nav(self._next_target)
+
+    def _sync_profile_dropdown(self, profile_id: str | None) -> None:
+        profiles = list(self._services.profiles.list())
+        ids = [p.id for p in profiles]
+        labels = [p.name for p in profiles]
+        if not labels:
+            ids = ["__none__"]
+            labels = ["No paths yet"]
+        # Rebuild model only when membership or names change
+        if ids != self._profile_ids:
+            self._profile_ids = ids
+            self._profile_dd_block = True
+            try:
+                self._profile_dd.set_model(Gtk.StringList.new(labels))
+            finally:
+                self._profile_dd_block = False
+        pick = 0
+        if profile_id and profile_id in self._profile_ids:
+            pick = self._profile_ids.index(profile_id)
+        self._profile_dd_block = True
+        try:
+            self._profile_dd.set_selected(pick)
+            self._profile_dd.set_sensitive(bool(profiles))
+        finally:
+            self._profile_dd_block = False
+
+    def _update_next_chip(
+        self,
+        *,
+        active: bool,
+        ready: Readiness,
+        profile,
+        st: CoreStatus,
+    ) -> None:
+        """Show a single actionable next step when Connect is not the right verb."""
+        self._next_target = None
+        if active or st.state == CoreState.CONNECTING or self._action_busy:
+            self._next.set_visible(False)
+            return
+        if profile is None:
+            self._next.set_label("Create a path →")
+            self._next_target = "profiles"
+            self._next.set_visible(True)
+            return
+        if not ready.ok:
+            low = ready.summary.lower()
+            if "incomplete" in low or "backend" in low or "adapter" in low:
+                label = "Fix adapters →"
+                target = "backends"
+            elif "no backend" in low or "unbound" in low or "hop" in low:
+                label = "Bind hops on path →"
+                target = "profiles"
+            else:
+                label = f"{ready.summary[:42]}{'…' if len(ready.summary) > 42 else ''} →"
+                target = "profiles"
+            self._next.set_label(label)
+            self._next_target = target
+            self._next.set_visible(True)
+            return
+        self._next.set_sensitive(True)
+        self._next.set_visible(False)
 
     def _on_info(self, *_a) -> None:
         st = self._services.core.status()
@@ -305,10 +404,9 @@ class HomePage(Gtk.Box):
                     name = (
                         self._services.active_profile().name
                         if self._services.active_profile()
-                        else "profile"
+                        else "path"
                     )
                     self._on_toast(f"Connected · {name}")
-                # Non-blocking product warning (e.g. Mullvad apps-only myth)
                 if ready is not None and ready.warnings:
                     w0 = ready.warnings[0]
                     self._on_toast(w0[:180] + ("…" if len(w0) > 180 else ""))
@@ -392,7 +490,7 @@ class HomePage(Gtk.Box):
                 detail = "Whonix detected · start spectred, then Connect"
         else:
             detail = {
-                CoreState.DISCONNECTED: "Traffic is local until you connect.",
+                CoreState.DISCONNECTED: "Local traffic until you Connect.",
                 CoreState.CONNECTING: "Building the path…",
             }.get(st.state, st.message)
             if whonix and whonix_role == "workstation" and st.state == CoreState.DISCONNECTED:
@@ -401,7 +499,6 @@ class HomePage(Gtk.Box):
                 if socks and port:
                     detail = f"Whonix-Workstation · Gateway Tor {socks}:{port}"
 
-        # Path roles: who is actually the public exit (not just hop order).
         backends = self._services.backends
         hop_details = getattr(st, "hop_details", None)
         if active and st.hops:
@@ -416,7 +513,6 @@ class HomePage(Gtk.Box):
         else:
             explain = explain_profile(None, backends)
 
-        # Mullvad CLI status — only when it matters, and never as if it were the exit.
         show_mv = False
         if profile_uses_mullvad_app_socks(profile, backends):
             show_mv = True
@@ -437,25 +533,25 @@ class HomePage(Gtk.Box):
             path_graph(
                 explain.kinds if explain.hops else [],
                 live=active,
-                empty="Choose a profile",
+                empty="Pick or create a path",
                 labels=explain.labels or None,
                 roles=explain.roles or None,
                 sublabels=explain.sublabels or None,
-                # Always name the public exit when we know it.
                 caption=explain.caption,
             )
         )
-        if active:
-            name = (st.active_profile or "").strip() or (
-                profile.name if profile is not None else ""
-            )
-            self._profile_label.set_text(f"{name} · live" if name else "live path")
-        elif profile is None:
-            self._profile_label.set_text("")
-        else:
-            tag = "ready" if ready.ok else "incomplete"
-            self._profile_label.set_text(f"{profile.name} · {tag} · planned")
-        # Info is always useful (explains empty state too).
+
+        active_id = None
+        if active and (st.profile_id or "").strip():
+            active_id = (st.profile_id or "").strip()
+        elif profile is not None:
+            active_id = profile.id
+        self._sync_profile_dropdown(active_id)
+        # While connected, lock path switch (change path after disconnect).
+        self._profile_dd.set_sensitive(
+            bool(self._services.profiles.list()) and not active and not self._action_busy
+        )
+
         self._info_btn.set_sensitive(True)
         self._info_btn.set_tooltip_text(
             f"What does “{profile.name}” do?"
@@ -463,8 +559,11 @@ class HomePage(Gtk.Box):
             else "What does this path do?"
         )
 
+        self._update_next_chip(
+            active=active, ready=ready, profile=profile, st=st
+        )
+
         if self._action_busy:
-            # Worker owns the CTA label/sensitivity until finish.
             self._primary.set_sensitive(False)
             return
 
@@ -474,5 +573,6 @@ class HomePage(Gtk.Box):
             self._primary.remove_css_class("suggested-action")
         else:
             self._primary.set_label("Connect")
+            # Allow Connect even when incomplete so preflight can guide.
             self._primary.set_sensitive(True)
             self._primary.add_css_class("suggested-action")

@@ -85,26 +85,33 @@ class ChinaIngressPage(Gtk.Box):
         self._probe_busy = False
         self._territory_code = DEFAULT_TERRITORY_CODE
 
-        badge = Gtk.Label(label="Ingress")
-        badge.add_css_class("preview-badge")
-        badge.set_valign(Gtk.Align.CENTER)
-        self._page_title = Gtk.Label(label="Reach", xalign=0)
+        self._page_title = Gtk.Label(label="Doors", xalign=0)
         self._page_title.add_css_class("pane-header-title")
         self._page_title.set_hexpand(True)
         self._page_title.set_valign(Gtk.Align.CENTER)
+        self._page_sub = Gtk.Label(
+            label="Reach into a territory from outside",
+            xalign=0,
+        )
+        self._page_sub.add_css_class("pane-header-sub")
+        self._page_sub.set_hexpand(True)
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        titles.set_hexpand(True)
+        titles.set_valign(Gtk.Align.CENTER)
+        titles.append(self._page_title)
+        titles.append(self._page_sub)
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         header.add_css_class("pane-header")
         header.set_hexpand(True)
-        header.append(self._page_title)
-        header.append(badge)
+        header.append(titles)
         self.append(header)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         body.add_css_class("page-body")
         body.set_valign(Gtk.Align.START)
 
+        # Ordered for scan: where → which door → how → ready → act
         body.append(self._group_territory())
-        body.append(self._banner())
         body.append(self._group_doors())
         body.append(self._group_topology())
         body.append(self._path_diagram())
@@ -126,13 +133,9 @@ class ChinaIngressPage(Gtk.Box):
 
     def _group_territory(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
-        g.set_title("Territory")
-        g.set_description(
-            "Where you are reaching *into*. Model is global (inbound host or "
-            "Inverse Snowflake). China is first-class with a deep research pack; "
-            "other territories use the same engineering doors."
-        )
-        self._territory_row = Adw.ComboRow(title="Target territory")
+        g.set_title("1 · Territory")
+        g.set_description("Where you are reaching into (outside vantage).")
+        self._territory_row = Adw.ComboRow(title="Target")
         self._territory_row.set_model(Gtk.StringList.new(territory_labels()))
         # CN is index 0
         self._territory_row.set_selected(0)
@@ -154,27 +157,29 @@ class ChinaIngressPage(Gtk.Box):
     def _apply_territory(self) -> None:
         """Refresh user-visible copy for the selected territory."""
         t = self._territory()
-        self._page_title.set_text(f"Reach · {t.short_name}")
-        self._banner_title.set_text(
-            f"Outside → {t.side_label} host you operate (or peer dial-out)"
+        self._page_title.set_text(f"Doors · {t.short_name}")
+        self._page_sub.set_text(
+            f"Outside → {t.side_label} host (inbound) or dial-out peer"
         )
-        self._banner_text.set_text(
-            f"{t.blurb} Two doors: (1) Inbound — VPN then TLS-shaped hop to a host "
-            f"you control. (2) Inverse Snowflake — a willing process dials out to "
-            f"your accept. Never dial {t.short_name} endpoints from clearnet. "
-            "Success is outside vantage only."
-        )
+        if hasattr(self, "_banner_title"):
+            self._banner_title.set_text(
+                f"Outside → {t.side_label} host you operate (or peer dial-out)"
+            )
+        if hasattr(self, "_banner_text"):
+            self._banner_text.set_text(
+                f"{t.blurb} Never dial {t.short_name} endpoints from clearnet."
+            )
         self._doors_group.set_description(
-            f"Both first-class. Inbound needs a {t.side_label} host you control. "
-            "Inverse Snowflake needs a willing host that dials out (export client)."
+            f"Pick one door. Inbound needs a {t.side_label} host; "
+            "dial-out needs a willing peer (export client)."
         )
-        self._door_inbound.set_title(f"I already have a {t.side_label} host")
+        self._door_inbound.set_title(f"Inbound — I have a {t.side_label} host")
         self._door_inbound.set_subtitle(
-            "Composition I — VPN underlay → REALITY/Proxy to that host"
+            "VPN underlay → REALITY/Proxy to that host"
         )
-        self._door_reverse.set_title("Inverse Snowflake (peer dials out)")
+        self._door_reverse.set_title("Dial-out — peer dials to me")
         self._door_reverse.set_subtitle(
-            "Composition III — export client; volunteer maps SOCKS for you"
+            "Inverse Snowflake — export client; maps SOCKS for you"
         )
         # Topology combo: keep III branded; inbound line uses side_label
         # Profile name defaults if still generic
@@ -272,7 +277,7 @@ class ChinaIngressPage(Gtk.Box):
     def _group_doors(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         self._doors_group = g
-        g.set_title("Choose a door")
+        g.set_title("2 · Door")
         g.set_description("")
         self._door_inbound = Adw.ActionRow(
             title="I already have a target-side host",
@@ -354,7 +359,7 @@ class ChinaIngressPage(Gtk.Box):
 
     def _group_topology(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
-        g.set_title("Topology")
+        g.set_title("3 · Topology")
         g.set_description(
             "Two open doors: inbound (China host you control) or Inverse Snowflake "
             "(peer/lab dials out — export client package). Multi-hop later."
@@ -816,7 +821,7 @@ class ChinaIngressPage(Gtk.Box):
 
     def _group_readiness(self) -> Gtk.Widget:
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        head = Gtk.Label(label="Readiness", xalign=0)
+        head = Gtk.Label(label="4 · Readiness", xalign=0)
         head.add_css_class("china-section-title")
         outer.append(head)
         sub = Gtk.Label(
@@ -874,7 +879,7 @@ class ChinaIngressPage(Gtk.Box):
 
     def _group_actions(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
-        g.set_title("Actions")
+        g.set_title("5 · Actions")
         g.set_description(
             "Save writes backend + profile with territory=XX. "
             "Inbound: path_intent=ingress_territory. "

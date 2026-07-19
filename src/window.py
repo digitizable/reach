@@ -12,9 +12,10 @@ from pages.apps import AppsPage
 from pages.backends import BackendsPage
 from pages.china_ingress import ChinaIngressPage
 from pages.home import HomePage
-from pages.nav import DEFAULT_PAGE, NAV_ITEMS, NavItem
+from pages.nav import DEFAULT_PAGE, NAV_ITEMS, PAGE_SUBTITLES, NavItem
 from pages.profiles import ProfilesPage
 from pages.settings import SettingsPage
+from pages.tools import ToolsPage
 from services import Services
 
 
@@ -22,10 +23,10 @@ class ReachWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, *, services: Services) -> None:
         super().__init__(application=app, title=APPLICATION_NAME)
         self.add_css_class("reach-window")
-        # Fixed shell — slightly roomier, not resizable.
-        self.set_default_size(400, 600)
-        self.set_size_request(400, 600)
-        self.set_resizable(False)
+        # Compact operator panel — resizable for denser pages (Doors, Tools).
+        self.set_default_size(420, 640)
+        self.set_size_request(400, 560)
+        self.set_resizable(True)
         self.set_icon_name(APPLICATION_ICON)
 
         self._services = services
@@ -37,6 +38,7 @@ class ReachWindow(Adw.ApplicationWindow):
         self._backends: BackendsPage | None = None
         self._apps: AppsPage | None = None
         self._china: ChinaIngressPage | None = None
+        self._tools: ToolsPage | None = None
         self._settings: SettingsPage | None = None
         self._window_title: Adw.WindowTitle | None = None
         self._ready = False
@@ -221,7 +223,7 @@ class ReachWindow(Adw.ApplicationWindow):
         return max(1, int(mon.get_scale_factor()))
 
     def _brand_mark(self, size: int = 26) -> Gtk.Widget:
-        """Spectre glyph, rendered at device pixels so it stays sharp."""
+        """Reach mark, rendered at device pixels so it stays sharp."""
         path = project_root() / "data" / "assets" / "mark.svg"
         if not path.is_file():
             img = Gtk.Image.new_from_icon_name(APPLICATION_ICON)
@@ -261,6 +263,14 @@ class ReachWindow(Adw.ApplicationWindow):
 
         first: Gtk.ToggleButton | None = None
         for item in NAV_ITEMS:
+            if item.section_start:
+                sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+                sep.add_css_class("nav-section-sep")
+                sep.set_margin_top(4)
+                sep.set_margin_bottom(4)
+                sep.set_margin_start(10)
+                sep.set_margin_end(10)
+                rail.append(sep)
             btn = self._nav_button(item)
             if first is None:
                 first = btn
@@ -369,6 +379,10 @@ class ReachWindow(Adw.ApplicationWindow):
             on_changed=self._on_data_changed,
             on_navigate=self._navigate,
         )
+        self._tools = ToolsPage(
+            on_toast=self.toast,
+            on_navigate=self._navigate,
+        )
         app = self.get_application()
         check_cb = None
         if app is not None and hasattr(app, "start_update_check"):
@@ -385,6 +399,7 @@ class ReachWindow(Adw.ApplicationWindow):
         stack.add_named(self._backends, "backends")
         stack.add_named(self._apps, "apps")
         stack.add_named(self._china, "china")
+        stack.add_named(self._tools, "tools")
         stack.add_named(self._settings, "settings")
         self._page_stack = stack
         return stack
@@ -403,6 +418,8 @@ class ReachWindow(Adw.ApplicationWindow):
             self._backends.reload()
         if self._china is not None and hasattr(self._china, "reload"):
             self._china.reload()
+        if self._tools is not None and hasattr(self._tools, "reload"):
+            self._tools.reload()
         # Apps list is large — only refresh status line unless search/filter needs rebuild
         if self._apps is not None:
             if hasattr(self._apps, "refresh_status_line"):
@@ -488,34 +505,31 @@ class ReachWindow(Adw.ApplicationWindow):
 
     def _sync_chrome(self) -> None:
         st = self._services.core.status()
-        subtitles = {
+        state_sub = {
             CoreState.UNAVAILABLE: "Core offline",
             CoreState.DISCONNECTED: "Not connected",
             CoreState.CONNECTING: "Connecting…",
             CoreState.CONNECTED: "Protected",
         }
-        if self._window_title is not None:
-            # China ingress page is UI-only; keep that explicit in the header.
-            page_id = (
-                self._page_stack.get_visible_child_name()
-                if self._page_stack is not None
-                else None
-            )
-            if page_id == "china":
-                if st.state == CoreState.CONNECTED:
-                    self._window_title.set_subtitle(
-                        st.path_summary or "Reach · connected"
-                    )
-                else:
-                    self._window_title.set_subtitle(
-                        "Reach · territory ingress (China default)"
-                    )
-                return
-            sub = subtitles.get(st.state, st.state.value)
-            # When protected, show which path the *core* has up (not a stale label).
-            if st.state == CoreState.CONNECTED and st.path_summary:
-                sub = st.path_summary
-            self._window_title.set_subtitle(sub)
+        if self._window_title is None:
+            return
+        page_id = (
+            self._page_stack.get_visible_child_name()
+            if self._page_stack is not None
+            else None
+        )
+        # Always lead with live path state when connected / connecting.
+        if st.state == CoreState.CONNECTED:
+            sub = st.path_summary or "Protected"
+        elif st.state == CoreState.CONNECTING:
+            sub = "Connecting…"
+        elif st.state == CoreState.UNAVAILABLE:
+            sub = "Core offline"
+        else:
+            page_label = PAGE_SUBTITLES.get(page_id or "", "")
+            base = state_sub.get(st.state, st.state.value)
+            sub = f"{base} · {page_label}" if page_label and page_id != "home" else base
+        self._window_title.set_subtitle(sub)
 
     def toast(self, title: str, *, timeout: int | None = None) -> None:
         # Longer display when reminding users to reconnect after mid-session edits

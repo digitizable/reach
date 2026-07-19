@@ -35,7 +35,13 @@ class SettingsPage(Gtk.Box):
         save = Gtk.Button(label="Save")
         save.add_css_class("suggested-action")
         save.connect("clicked", self._on_save)
-        self.append(page_header("Settings", end=save))
+        self.append(
+            page_header(
+                "Settings",
+                subtitle="Core socket, routing, Mullvad, tray, updates",
+                end=save,
+            )
+        )
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         body.add_css_class("page-body")
@@ -58,7 +64,7 @@ class SettingsPage(Gtk.Box):
         g = Adw.PreferencesGroup()
         g.set_title("Spectre core")
         g.set_description(
-            "How this desktop shell reaches the headless core. "
+            "How Reach talks to the path engine (spectred). "
             f"Default socket: {default_socket_path()}"
         )
 

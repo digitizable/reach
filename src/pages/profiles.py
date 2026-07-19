@@ -33,9 +33,15 @@ class ProfilesPage(Gtk.Box):
         new_btn = Gtk.Button()
         new_btn.set_icon_name("list-add-symbolic")
         new_btn.add_css_class("flat")
-        new_btn.set_tooltip_text("New profile")
+        new_btn.set_tooltip_text("New path")
         new_btn.connect("clicked", self._on_new)
-        self.append(page_header("Profiles", end=new_btn))
+        self.append(
+            page_header(
+                "Paths",
+                subtitle="Recipes of hops. Each hop uses an adapter.",
+                end=new_btn,
+            )
+        )
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         body.add_css_class("page-body")
@@ -43,7 +49,7 @@ class ProfilesPage(Gtk.Box):
         body.set_vexpand(True)
 
         self._empty = Gtk.Label(
-            label="No profiles yet.\nCreate one to build a Spectre path.",
+            label="No paths yet.\nCreate one, or open Doors for territory ingress.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")

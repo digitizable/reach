@@ -55,7 +55,13 @@ class AppsPage(Gtk.Box):
         add_btn.add_css_class("flat")
         add_btn.set_tooltip_text("Add custom command")
         add_btn.connect("clicked", self._on_add_command)
-        self.append(page_header("Exclude from path", end=add_btn))
+        self.append(
+            page_header(
+                "Apps",
+                subtitle="Exclude from path — clearnet while the rest is protected",
+                end=add_btn,
+            )
+        )
 
         # Compact top chrome — long copy was eating the 600px window.
         top = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -70,12 +76,8 @@ class AppsPage(Gtk.Box):
         self._hint.set_ellipsize(Pango.EllipsizeMode.END)
         self._hint.set_lines(2)
         self._hint.set_tooltip_text(
-            "Launch apps outside Spectre (clearnet). Preferred: clearnet-run "
-            "netns. Fallback: mullvad-exclude. Setup once: spectre setup-clearnet. "
-            "Firefox: first exclude copies your default profile into a Spectre-only "
-            "profile (under this user account); menu Firefox keeps the real default. "
-            "Spotify: first exclude copies ~/.config/spotify (login) into a "
-            "Spectre-only config so the clearnet instance stays signed in."
+            "Launch apps outside the path (clearnet). Preferred: clearnet-run "
+            "netns. Fallback: mullvad-exclude. Setup once: spectre setup-clearnet."
         )
         top.append(self._hint)
 

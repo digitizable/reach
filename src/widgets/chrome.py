@@ -1,4 +1,4 @@
-"""Shared page chrome — no scrollbars; content must fit the fixed window."""
+"""Shared page chrome — pane headers and body helpers."""
 
 from __future__ import annotations
 
@@ -8,17 +8,30 @@ from gi.repository import Gtk
 def page_header(
     title: str,
     *,
+    subtitle: str | None = None,
     end: Gtk.Widget | None = None,
 ) -> Gtk.Widget:
     header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
     header.add_css_class("pane-header")
     header.set_hexpand(True)
 
+    titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+    titles.set_hexpand(True)
+    titles.set_valign(Gtk.Align.CENTER)
+
     t = Gtk.Label(label=title, xalign=0)
     t.add_css_class("pane-header-title")
     t.set_hexpand(True)
-    t.set_valign(Gtk.Align.CENTER)
-    header.append(t)
+    titles.append(t)
+
+    if subtitle:
+        sub = Gtk.Label(label=subtitle, xalign=0)
+        sub.add_css_class("pane-header-sub")
+        sub.set_hexpand(True)
+        sub.set_wrap(True)
+        titles.append(sub)
+
+    header.append(titles)
 
     if end is not None:
         end.set_valign(Gtk.Align.CENTER)
