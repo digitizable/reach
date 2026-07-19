@@ -102,21 +102,6 @@ button.nav-btn.nav-btn-active {
   letter-spacing: -0.01em;
 }
 
-.pane-header-sub {
-  font-size: 10px;
-  font-weight: 500;
-  color: #707070;
-  letter-spacing: 0.01em;
-  line-height: 1.3;
-}
-
-/* Rail section breaks (Paths / Doors / Tools / Settings) */
-.nav-section-sep {
-  background-color: #2a2a2a;
-  min-height: 1px;
-  opacity: 0.9;
-}
-
 .page-body {
   background-color: transparent;
 }
@@ -260,72 +245,6 @@ button.nav-btn.nav-btn-active {
   font-weight: 600;
   font-size: 12px;
   border-radius: 8px;
-}
-
-.home-profile-dd {
-  min-height: 28px;
-  font-size: 11px;
-}
-
-.home-profile-dd > button,
-.home-profile-dd button.toggle {
-  min-height: 28px;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 8px;
-}
-
-.home-next {
-  font-size: 11px;
-  font-weight: 500;
-  color: #9aa8c0;
-  min-height: 26px;
-  padding: 0 8px;
-  border-radius: 6px;
-}
-
-.home-next:hover {
-  color: #c8d4ee;
-  background-color: #1a1a1a;
-}
-
-/* Tools page cards */
-.tools-lede {
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.tool-card {
-  background-color: #181818;
-  border: 1px solid #262626;
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.tool-card-name {
-  font-size: 13px;
-  font-weight: 650;
-  color: #f0f0f0;
-}
-
-.tool-card-role {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #707070;
-}
-
-.tool-card-when {
-  font-size: 11px;
-  color: #a8b4c8;
-  line-height: 1.4;
-}
-
-.tool-card-link {
-  font-size: 11px;
-  margin-top: 2px;
-  padding: 0;
 }
 
 .fit-body {
@@ -671,7 +590,7 @@ toast {
   color: #e8e8e8;
 }
 
-/* ── China ingress (Reach China) ─────────────────────── */
+/* ── China ingress preview (non-functional) ─────────── */
 .preview-badge {
   font-size: 10px;
   font-weight: 700;
@@ -700,14 +619,6 @@ toast {
   margin-top: 2px;
 }
 
-.china-soon-banner {
-  border-left-color: #666;
-}
-
-.china-soon-banner .china-ingress-banner-title {
-  color: #b0b0b0;
-}
-
 .china-ingress-banner-title {
   font-size: 12px;
   font-weight: 650;
@@ -718,102 +629,6 @@ toast {
   font-size: 11px;
   line-height: 1.45;
   color: #9a9a9a;
-}
-
-.china-section-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #888;
-}
-
-.china-path-diagram {
-  padding: 8px 4px 4px;
-}
-
-.china-path-diagram-label {
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #777;
-}
-
-.china-path-row {
-  padding: 6px 0;
-}
-
-.china-path-chip {
-  font-size: 10px;
-  line-height: 1.25;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #333;
-  background-color: #1a1a1a;
-  color: #888;
-}
-
-.china-path-chip-active {
-  border-color: rgba(201, 162, 39, 0.55);
-  background-color: rgba(201, 162, 39, 0.1);
-  color: #e8c84a;
-  font-weight: 600;
-}
-
-.china-path-arrow {
-  font-size: 14px;
-  color: #555;
-  padding: 0 2px;
-}
-
-.china-path-caption {
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.china-ready-list {
-  padding: 4px 0;
-}
-
-.china-ready-mark {
-  font-size: 12px;
-  font-weight: 700;
-  min-width: 1.1em;
-}
-
-.china-ready-text {
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.china-ready-ok {
-  color: #8bc48a;
-}
-
-.china-ready-pending {
-  color: #888;
-}
-
-.china-ready-summary {
-  font-size: 11px;
-  margin-top: 2px;
-}
-
-.china-saved-list {
-  padding: 2px 0;
-}
-
-.china-saved-row {
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #2a2a2a;
-  background-color: #161616;
-}
-
-.china-saved-name {
-  font-size: 12px;
-  color: #ccc;
 }
 
 /* Map/flag rail assets: white SVG, opacity matches symbolic icon greys */
@@ -844,6 +659,85 @@ toast {
   /* full white like selected symbolic icons */
   opacity: 1;
   -gtk-icon-filter: none;
+}
+
+.pane-header-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: #707070;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.nav-section-sep {
+  background-color: #2a2a2a;
+  min-height: 1px;
+  opacity: 0.9;
+}
+
+.home-profile-dd {
+  min-height: 28px;
+  font-size: 11px;
+}
+
+.home-profile-dd > button,
+.home-profile-dd button.toggle {
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 8px;
+}
+
+.home-next {
+  font-size: 11px;
+  font-weight: 500;
+  color: #9aa8c0;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+
+.home-next:hover {
+  color: #c8d4ee;
+  background-color: #1a1a1a;
+}
+
+.tools-lede {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.tool-card {
+  background-color: #181818;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.tool-card-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: #f0f0f0;
+}
+
+.tool-card-role {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #707070;
+}
+
+.tool-card-when {
+  font-size: 11px;
+  color: #a8b4c8;
+  line-height: 1.4;
+}
+
+.tool-card-link {
+  font-size: 11px;
+  margin-top: 2px;
+  padding: 0;
 }
 
 
@@ -924,4 +818,489 @@ toast {
 
 .home-page {
   /* breathing room on wide shell; content stays centered */
+}
+
+/* ══════════════════════════════════════════════════════
+   Visual polish — centered stages, cards, door cards
+   ══════════════════════════════════════════════════════ */
+
+/* Rail: softer selected pill */
+.nav-rail {
+  min-width: 52px;
+  padding: 10px 0 12px 0;
+}
+
+.nav-btn {
+  min-width: 52px;
+  min-height: 44px;
+  border-radius: 10px;
+  margin: 2px 6px;
+}
+
+.nav-btn:hover {
+  background-color: #171717;
+  color: #e0e0e0;
+}
+
+.nav-btn:checked,
+.nav-btn.nav-btn-active,
+button.nav-btn:checked,
+button.nav-btn.nav-btn-active {
+  background-color: #1c1c1e;
+  color: #ffffff;
+  box-shadow: none;
+  border: 1px solid #333333;
+}
+
+.nav-section-sep {
+  margin: 6px 14px;
+  background-color: #2a2a2a;
+}
+
+.brand-mark {
+  margin: 10px 0 12px 0;
+}
+
+/* Pane headers */
+.pane-header {
+  padding: 14px 18px;
+  min-height: 48px;
+  background-color: #0c0c0c;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.pane-header-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: #f4f4f5;
+}
+
+.pane-header-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: #71717a;
+  line-height: 1.35;
+}
+
+/* ── Home mission card ──────────────────────────────── */
+.home-page {
+  background: radial-gradient(ellipse 80% 60% at 50% 42%, #161618 0%, #111111 55%, #0d0d0d 100%);
+}
+
+.home-stage {
+  padding: 8px 16px 24px;
+}
+
+.home-card {
+  background-color: #141416;
+  border: 1px solid #262628;
+  border-radius: 16px;
+  padding: 28px 28px 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  min-width: 360px;
+  max-width: 440px;
+}
+
+.home-hero {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+}
+
+.home-status-dot {
+  min-width: 12px;
+  min-height: 12px;
+  border-radius: 99px;
+  margin-bottom: 4px;
+}
+
+.home-status-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: #fafafa;
+  line-height: 1.1;
+}
+
+.home-status-detail {
+  font-size: 12px;
+  color: #a1a1aa;
+  line-height: 1.45;
+  max-width: 22rem;
+}
+
+.home-path-well {
+  margin: 18px 0 8px;
+  padding: 16px 12px;
+  background-color: #0e0e10;
+  border: 1px solid #222226;
+  border-radius: 12px;
+}
+
+.home-picker {
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
+.home-picker-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #52525b;
+}
+
+.home-profile-dd {
+  min-height: 34px;
+}
+
+.home-profile-dd > button,
+.home-profile-dd button.toggle {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 10px;
+  background-color: #1a1a1c;
+  border: 1px solid #2e2e32;
+}
+
+.home-info-btn {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 10px;
+  color: #71717a;
+}
+
+.home-info-btn:hover {
+  background-color: #1f1f22;
+  color: #e4e4e7;
+}
+
+.home-foot {
+  margin-top: 18px;
+  width: 100%;
+}
+
+.home-next {
+  font-size: 12px;
+  font-weight: 550;
+  color: #93a4c4;
+  min-height: 28px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background-color: #1a1e28;
+  border: 1px solid #2a3344;
+}
+
+.home-next:hover {
+  color: #c7d4ee;
+  background-color: #222836;
+}
+
+.home-cta {
+  min-height: 42px;
+  font-weight: 650;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  border-radius: 12px;
+  padding: 0 28px;
+}
+
+button.suggested-action.home-cta {
+  background-color: #f4f4f5;
+  color: #09090b;
+}
+
+button.suggested-action.home-cta:hover {
+  background-color: #ffffff;
+}
+
+/* ── Path graph ─────────────────────────────────────── */
+.path-diagram {
+  padding: 4px 0;
+}
+
+.path-node-well {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 12px;
+  background-color: #1a1a1c;
+  border: 1px solid #2a2a2e;
+  padding: 8px;
+}
+
+.path-live .path-node-well {
+  background-color: #142018;
+  border-color: #2d4a36;
+}
+
+.path-node-label {
+  font-size: 11px;
+  font-weight: 550;
+  color: #a1a1aa;
+}
+
+.path-live .path-node-label {
+  color: #bbf7d0;
+}
+
+.path-arrow {
+  font-size: 14px;
+  color: #52525b;
+  min-width: 18px;
+}
+
+.path-caption {
+  font-size: 11px;
+  color: #71717a;
+  margin-top: 8px;
+  max-width: 26rem;
+}
+
+/* ── Master–detail polish ───────────────────────────── */
+.master-pane {
+  background-color: #0c0c0e;
+  padding: 14px 12px 16px 14px;
+  border-right: none;
+}
+
+.detail-pane {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 40%, #151518 0%, #111113 60%, #0f0f10 100%);
+}
+
+.detail-inner {
+  padding: 8px 12px 24px;
+}
+
+.detail-path-well {
+  margin: 4px 0;
+  padding: 18px 20px;
+  background-color: #0e0e10;
+  border: 1px solid #222226;
+  border-radius: 14px;
+}
+
+.detail-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #fafafa;
+}
+
+.detail-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background-color: #1a1a1c;
+  border: 1px solid #2a2a2e;
+}
+
+.detail-tag-ok {
+  color: #86efac;
+  background-color: #122018;
+  border-color: #2a4a36;
+}
+
+.detail-tag-bad {
+  color: #fca5a5;
+  background-color: #201414;
+  border-color: #4a2a2a;
+}
+
+.profile-row {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 2px 0;
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.profile-row:hover {
+  background-color: #161618;
+  border-color: #2a2a2e;
+}
+
+.profile-row:checked,
+.profile-row:active {
+  background-color: #1a1a1e;
+  border-color: #3a3a42;
+}
+
+.profile-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.profile-row-hops {
+  font-size: 11px;
+  color: #71717a;
+}
+
+/* ── Door cards ─────────────────────────────────────── */
+.doors-hero {
+  padding: 8px 4px 4px;
+  margin-bottom: 4px;
+}
+
+.doors-hero-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #fafafa;
+}
+
+.doors-hero-text {
+  font-size: 12px;
+  color: #a1a1aa;
+  line-height: 1.45;
+}
+
+.reach-territory-map {
+  opacity: 0.92;
+  margin-bottom: 4px;
+}
+
+.door-cards {
+  margin-top: 4px;
+}
+
+button.door-card {
+  padding: 14px 14px;
+  border-radius: 12px;
+  background-color: #161618;
+  border: 1px solid #2a2a2e;
+  color: #e4e4e7;
+  min-height: 0;
+}
+
+button.door-card:hover {
+  background-color: #1c1c20;
+  border-color: #3a3a42;
+}
+
+button.door-card.door-card-active {
+  background-color: #1a1e28;
+  border-color: #4a5a78;
+  box-shadow: inset 0 0 0 1px #3a4a66;
+}
+
+.door-card-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: #fafafa;
+}
+
+.door-card-body {
+  font-size: 12px;
+  color: #d4d4d8;
+}
+
+.door-card-hint {
+  font-size: 11px;
+  color: #71717a;
+}
+
+.door-card-icon {
+  color: #a1a1aa;
+}
+
+.door-card-active .door-card-icon {
+  color: #c7d4ee;
+}
+
+.door-card-chev {
+  color: #52525b;
+}
+
+.door-pkg-btn {
+  font-size: 11px;
+  color: #93a4c4;
+  margin-top: 2px;
+}
+
+.doors-territory-group {
+  margin-top: 4px;
+}
+
+/* Tools cards */
+.tool-card {
+  border-radius: 14px;
+  padding: 16px 16px;
+  background-color: #151518;
+  border: 1px solid #2a2a2e;
+  min-height: 140px;
+}
+
+.tool-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tools-lede {
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 42rem;
+}
+
+/* Settings */
+.settings-column {
+  max-width: 540px;
+  padding-bottom: 24px;
+}
+
+/* Preferences rows breathing room */
+preferencesgroup > list > row,
+list.boxed-list > row {
+  min-height: 52px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+}
+
+.section-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #52525b;
+  margin-bottom: 2px;
+}
+
+/* State dots slightly larger on home */
+.state-dot {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 99px;
+}
+
+.state-dot.state-live {
+  background-color: #4ade80;
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.45);
+}
+
+.state-dot.state-idle {
+  background-color: #71717a;
+}
+
+.state-dot.state-busy {
+  background-color: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.35);
+}
+
+.state-dot.state-offline {
+  background-color: #a1a1aa;
+}
+
+.state-dot.state-bad {
+  background-color: #f87171;
+}
+
+/* Apps callout */
+.apps-callout {
+  border-radius: 12px;
+  padding: 12px 14px;
+  background-color: #161618;
+  border: 1px solid #2e2e32;
 }

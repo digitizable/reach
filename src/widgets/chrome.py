@@ -11,11 +11,11 @@ def page_header(
     subtitle: str | None = None,
     end: Gtk.Widget | None = None,
 ) -> Gtk.Widget:
-    header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+    header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
     header.add_css_class("pane-header")
     header.set_hexpand(True)
 
-    titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+    titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
     titles.set_hexpand(True)
     titles.set_valign(Gtk.Align.CENTER)
 
@@ -35,6 +35,7 @@ def page_header(
 
     if end is not None:
         end.set_valign(Gtk.Align.CENTER)
+        end.add_css_class("pane-header-action")
         header.append(end)
     return header
 

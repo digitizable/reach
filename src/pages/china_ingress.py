@@ -113,43 +113,54 @@ class ChinaIngressPage(Gtk.Box):
         split.set_hexpand(True)
         split.set_vexpand(True)
 
-        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         left.add_css_class("doors-left")
-        left.set_size_request(300, -1)
+        left.set_size_request(340, -1)
         left.set_hexpand(False)
         left.set_vexpand(True)
-        left.append(self._group_territory())
-        left.append(self._group_doors())
-        left.append(self._group_topology())
+        left.append(self._hero_territory())
+        left.append(self._door_cards())
         left.append(self._path_diagram())
         left.append(self._group_readiness())
         left.append(self._group_actions())
         left.append(self._group_docs())
-        left_scroll = scroll_body(left, margin=12)
+        # Hidden topology model (door cards drive selection)
+        topo_hidden = self._group_topology()
+        topo_hidden.set_visible(False)
+        left.append(topo_hidden)
+        left_scroll = scroll_body(left, margin=16)
         left_scroll.set_hexpand(False)
-        left_scroll.set_size_request(320, -1)
+        left_scroll.set_size_request(360, -1)
         split.append(left_scroll)
 
         sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         sep.add_css_class("master-detail-sep")
         split.append(sep)
 
-        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         right.add_css_class("doors-right")
         right.set_hexpand(True)
         right.set_vexpand(True)
         cfg_head = Gtk.Label(label="Configuration", xalign=0)
         cfg_head.add_css_class("section-label")
         right.append(cfg_head)
+        cfg_sub = Gtk.Label(
+            label="Fill in only what this door needs — then save and Connect from Home.",
+            xalign=0,
+            wrap=True,
+        )
+        cfg_sub.add_css_class("muted")
+        right.append(cfg_sub)
         right.append(self._group_stack())
         right.append(self._group_saved())
-        right_scroll = scroll_body(right, margin=12)
+        right_scroll = scroll_body(right, margin=20)
         right_scroll.set_hexpand(True)
         split.append(right_scroll)
 
         self.append(split)
         self._reload_vpn_combo()
         self._on_topo_changed()
+        self._set_door_selected(_TOPO_DIRECT)
         self._apply_territory()
         self._refresh_readiness()
         self._reload_saved()
@@ -159,9 +170,10 @@ class ChinaIngressPage(Gtk.Box):
 
     def _group_territory(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
-        g.set_title("1 · Territory")
-        g.set_description("Where you are reaching into (outside vantage).")
-        self._territory_row = Adw.ComboRow(title="Target")
+        g.add_css_class("doors-territory-group")
+        g.set_title("")
+        g.set_description("")
+        self._territory_row = Adw.ComboRow(title="Territory")
         self._territory_row.set_model(Gtk.StringList.new(territory_labels()))
         # CN is index 0
         self._territory_row.set_selected(0)
@@ -184,29 +196,22 @@ class ChinaIngressPage(Gtk.Box):
         """Refresh user-visible copy for the selected territory."""
         t = self._territory()
         self._page_title.set_text(f"Doors · {t.short_name}")
-        self._page_sub.set_text(
-            f"Outside → {t.side_label} host (inbound) or dial-out peer"
-        )
+        self._page_sub.set_text("Outside vantage · open a door into the territory")
         if hasattr(self, "_banner_title"):
-            self._banner_title.set_text(
-                f"Outside → {t.side_label} host you operate (or peer dial-out)"
-            )
+            self._banner_title.set_text(t.short_name)
         if hasattr(self, "_banner_text"):
             self._banner_text.set_text(
                 f"{t.blurb} Never dial {t.short_name} endpoints from clearnet."
             )
-        self._doors_group.set_description(
-            f"Pick one door. Inbound needs a {t.side_label} host; "
-            "dial-out needs a willing peer (export client)."
-        )
-        self._door_inbound.set_title(f"Inbound — I have a {t.side_label} host")
-        self._door_inbound.set_subtitle(
-            "VPN underlay → REALITY/Proxy to that host"
-        )
-        self._door_reverse.set_title("Dial-out — peer dials to me")
-        self._door_reverse.set_subtitle(
-            "Inverse Snowflake — export client; maps SOCKS for you"
-        )
+        # Update door card copy if present
+        ib = getattr(self, "_door_inbound_btn", None)
+        if ib is not None and hasattr(ib, "_door_body"):
+            ib._door_body.set_text(f"I have a {t.side_label} host")
+            ib._door_hint.set_text("VPN underlay → REALITY / Proxy")
+        rb = getattr(self, "_door_reverse_btn", None)
+        if rb is not None and hasattr(rb, "_door_body"):
+            rb._door_body.set_text("Peer dials out to me")
+            rb._door_hint.set_text("Inverse Snowflake · export client")
         # Topology combo: keep III branded; inbound line uses side_label
         # Profile name defaults if still generic
         for entry, default_tpl in (
@@ -247,36 +252,42 @@ class ChinaIngressPage(Gtk.Box):
                 self._rev_accept_port.set_value(float(t.default_accept_port))
         self._set_territory_map_asset(t.silhouette_asset())
 
-    # ── Banner ────────────────────────────────────────────────────────────
+    # ── Territory hero ────────────────────────────────────────────────────
 
-    def _banner(self) -> Gtk.Widget:
-        outer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-        outer.add_css_class("china-ingress-banner")
-        outer.set_hexpand(True)
+    def _hero_territory(self) -> Gtk.Widget:
+        """Centered map + territory picker (not a wall of prefs)."""
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        card.add_css_class("doors-hero")
+        card.set_halign(Gtk.Align.FILL)
 
-        # Territory silhouette (CN map reused; other maps from mapsicon)
         self._territory_map = Gtk.Image()
         self._territory_map.add_css_class("reach-territory-map")
-        self._territory_map.set_pixel_size(72)
-        self._territory_map.set_size_request(72, 72)
-        self._territory_map.set_valign(Gtk.Align.START)
+        self._territory_map.set_pixel_size(96)
+        self._territory_map.set_size_request(96, 96)
         self._territory_map.set_halign(Gtk.Align.CENTER)
-        outer.append(self._territory_map)
+        card.append(self._territory_map)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        box.set_hexpand(True)
-
-        self._banner_title = Gtk.Label(label="", xalign=0)
-        self._banner_title.add_css_class("china-ingress-banner-title")
+        self._banner_title = Gtk.Label(label="", xalign=0.5)
+        self._banner_title.add_css_class("doors-hero-title")
+        self._banner_title.set_halign(Gtk.Align.CENTER)
+        self._banner_title.set_justify(Gtk.Justification.CENTER)
         self._banner_title.set_wrap(True)
-        box.append(self._banner_title)
+        card.append(self._banner_title)
 
-        self._banner_text = Gtk.Label(label="", xalign=0, wrap=True)
-        self._banner_text.add_css_class("china-ingress-banner-text")
-        self._banner_text.set_max_width_chars(40)
-        box.append(self._banner_text)
-        outer.append(box)
-        return outer
+        self._banner_text = Gtk.Label(label="", xalign=0.5, wrap=True)
+        self._banner_text.add_css_class("doors-hero-text")
+        self._banner_text.set_halign(Gtk.Align.CENTER)
+        self._banner_text.set_justify(Gtk.Justification.CENTER)
+        self._banner_text.set_max_width_chars(36)
+        card.append(self._banner_text)
+
+        # Keep Adw ComboRow for territory but wrap quietly
+        card.append(self._group_territory())
+        return card
+
+    def _banner(self) -> Gtk.Widget:
+        # Back-compat alias
+        return self._hero_territory()
 
     def _set_territory_map_asset(self, filename: str | None) -> None:
         """Load data/assets silhouette into banner map image."""
@@ -298,66 +309,122 @@ class ChinaIngressPage(Gtk.Box):
             except Exception:
                 self._territory_map.set_from_icon_name("mark-location-symbolic")
 
-    # ── Empty-state doors ─────────────────────────────────────────────────
+    # ── Door cards ────────────────────────────────────────────────────────
 
-    def _group_doors(self) -> Adw.PreferencesGroup:
-        g = Adw.PreferencesGroup()
-        self._doors_group = g
-        g.set_title("2 · Door")
-        g.set_description("")
-        self._door_inbound = Adw.ActionRow(
-            title="I already have a target-side host",
-            subtitle="Composition I — VPN underlay → REALITY/Proxy to that host",
-        )
-        self._door_inbound.set_activatable(True)
-        self._door_inbound.connect(
-            "activated",
-            lambda *_: self._pick_door(_TOPO_DIRECT),
-        )
-        try:
-            self._door_inbound.add_suffix(
-                Gtk.Image.new_from_icon_name("go-next-symbolic")
-            )
-        except Exception:
-            pass
-        g.add(self._door_inbound)
+    def _door_cards(self) -> Gtk.Widget:
+        wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        wrap.add_css_class("door-cards")
 
-        self._door_reverse = Adw.ActionRow(
-            title="Inverse Snowflake (peer dials out)",
-            subtitle="Composition III — export client; volunteer maps SOCKS for you",
-        )
-        self._door_reverse.set_activatable(True)
-        self._door_reverse.connect(
-            "activated",
-            lambda *_: self._pick_door(_TOPO_REVERSE),
-        )
-        try:
-            self._door_reverse.add_suffix(
-                Gtk.Image.new_from_icon_name("go-next-symbolic")
-            )
-        except Exception:
-            pass
-        g.add(self._door_reverse)
+        head = Gtk.Label(label="Choose a door", xalign=0)
+        head.add_css_class("section-label")
+        wrap.append(head)
 
-        pkg = Adw.ActionRow(
-            title="Open Inverse Snowflake package folder",
-            subtitle="run-inverse-snowflake.sh · pairing.json · INVERSE_SNOWFLAKE.md",
+        self._doors_group = wrap  # for _apply_territory set_description no-ops
+
+        self._door_inbound_btn = self._make_door_card(
+            title="Inbound",
+            body="I have a host in the territory",
+            hint="VPN underlay → REALITY / Proxy",
+            icon="network-server-symbolic",
+            on_click=lambda *_: self._pick_door(_TOPO_DIRECT),
         )
-        pkg.set_activatable(True)
-        pkg.connect("activated", self._on_open_reverse_dir)
-        g.add(pkg)
-        return g
+        wrap.append(self._door_inbound_btn)
+
+        self._door_reverse_btn = self._make_door_card(
+            title="Dial-out",
+            body="Peer dials out to me",
+            hint="Inverse Snowflake · export client",
+            icon="network-transmit-receive-symbolic",
+            on_click=lambda *_: self._pick_door(_TOPO_REVERSE),
+        )
+        wrap.append(self._door_reverse_btn)
+
+        # Keep ActionRow-shaped attrs for _apply_territory title updates
+        self._door_inbound = self._door_inbound_btn
+        self._door_reverse = self._door_reverse_btn
+
+        pkg = Gtk.Button(label="Open export package folder…")
+        pkg.add_css_class("flat")
+        pkg.add_css_class("door-pkg-btn")
+        pkg.set_halign(Gtk.Align.START)
+        pkg.connect("clicked", self._on_open_reverse_dir)
+        wrap.append(pkg)
+        return wrap
+
+    def _make_door_card(
+        self,
+        *,
+        title: str,
+        body: str,
+        hint: str,
+        icon: str,
+        on_click,
+    ) -> Gtk.Button:
+        btn = Gtk.Button()
+        btn.add_css_class("door-card")
+        btn.add_css_class("flat")
+        btn.set_hexpand(True)
+        btn.connect("clicked", on_click)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.set_halign(Gtk.Align.FILL)
+
+        ic = Gtk.Image.new_from_icon_name(icon)
+        ic.set_pixel_size(22)
+        ic.add_css_class("door-card-icon")
+        ic.set_valign(Gtk.Align.CENTER)
+        row.append(ic)
+
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_hexpand(True)
+        t = Gtk.Label(label=title, xalign=0)
+        t.add_css_class("door-card-title")
+        col.append(t)
+        b = Gtk.Label(label=body, xalign=0, wrap=True)
+        b.add_css_class("door-card-body")
+        col.append(b)
+        h = Gtk.Label(label=hint, xalign=0, wrap=True)
+        h.add_css_class("door-card-hint")
+        col.append(h)
+        row.append(col)
+
+        chev = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chev.set_pixel_size(14)
+        chev.add_css_class("door-card-chev")
+        chev.set_valign(Gtk.Align.CENTER)
+        row.append(chev)
+
+        btn.set_child(row)
+        # Stash labels for territory refresh
+        btn._door_title = t  # type: ignore[attr-defined]
+        btn._door_body = b  # type: ignore[attr-defined]
+        btn._door_hint = h  # type: ignore[attr-defined]
+        return btn
+
+    def _set_door_selected(self, topo: int) -> None:
+        for btn, active in (
+            (getattr(self, "_door_inbound_btn", None), topo == _TOPO_DIRECT),
+            (getattr(self, "_door_reverse_btn", None), topo == _TOPO_REVERSE),
+        ):
+            if btn is None:
+                continue
+            if active:
+                btn.add_css_class("door-card-active")
+            else:
+                btn.remove_css_class("door-card-active")
 
     def _pick_door(self, topo: int) -> None:
-        self._topo.set_selected(topo)
+        if hasattr(self, "_topo"):
+            self._topo.set_selected(topo)
+        self._set_door_selected(topo)
         self._on_topo_changed()
         t = self._territory()
         if topo == _TOPO_REVERSE:
             self._toast(
-                "Inverse Snowflake — set accept host, Export client, run on foothold"
+                "Dial-out — set accept host, export client, run on foothold"
             )
         else:
-            self._toast(f"Inbound door — VPN then {t.short_name} REALITY/Proxy")
+            self._toast(f"Inbound — VPN then {t.short_name} REALITY/Proxy")
 
     def _on_open_reverse_dir(self, *_a) -> None:
         from app_config import user_data_dir

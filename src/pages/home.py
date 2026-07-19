@@ -37,49 +37,73 @@ class HomePage(Gtk.Box):
         self._on_navigate = on_navigate
         self._action_busy = False
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        body.add_css_class("home-body")
-        body.set_hexpand(True)
-        body.set_vexpand(True)
-        body.set_valign(Gtk.Align.CENTER)
-        body.set_halign(Gtk.Align.CENTER)
+        # Centered mission control on a soft stage (not edge-to-edge clutter)
+        stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        stage.add_css_class("home-stage")
+        stage.set_hexpand(True)
+        stage.set_vexpand(True)
+        stage.set_halign(Gtk.Align.CENTER)
+        stage.set_valign(Gtk.Align.CENTER)
 
-        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        status_row.add_css_class("home-status-line")
-        status_row.set_halign(Gtk.Align.CENTER)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        card.add_css_class("home-card")
+        card.set_halign(Gtk.Align.CENTER)
+        card.set_hexpand(False)
+        card.set_size_request(380, -1)
+
+        # Status hero
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        hero.add_css_class("home-hero")
+        hero.set_halign(Gtk.Align.CENTER)
 
         self._dot = Gtk.Box()
         self._dot.add_css_class("state-dot")
         self._dot.add_css_class("home-status-dot")
-        self._dot.set_valign(Gtk.Align.CENTER)
-        status_row.append(self._dot)
+        self._dot.set_halign(Gtk.Align.CENTER)
+        hero.append(self._dot)
 
         self._title = Gtk.Label(label="—")
         self._title.add_css_class("home-status-title")
-        status_row.append(self._title)
-        body.append(status_row)
+        self._title.set_halign(Gtk.Align.CENTER)
+        self._title.set_justify(Gtk.Justification.CENTER)
+        hero.append(self._title)
 
         self._detail = Gtk.Label(label="", wrap=True)
         self._detail.add_css_class("home-status-detail")
         self._detail.set_halign(Gtk.Align.CENTER)
         self._detail.set_justify(Gtk.Justification.CENTER)
-        self._detail.set_max_width_chars(28)
-        body.append(self._detail)
+        self._detail.set_max_width_chars(42)
+        hero.append(self._detail)
+        card.append(hero)
 
+        # Path diagram in its own well
+        path_well = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        path_well.add_css_class("home-path-well")
+        path_well.set_halign(Gtk.Align.FILL)
+        path_well.set_hexpand(True)
         self._path_host = Gtk.Box()
         self._path_host.set_halign(Gtk.Align.CENTER)
-        self._path_host.set_hexpand(False)
-        body.append(self._path_host)
+        self._path_host.set_hexpand(True)
+        path_well.append(self._path_host)
+        card.append(path_well)
 
-        # Path picker + info
-        profile_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        # Path picker
+        picker = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        picker.add_css_class("home-picker")
+        picker.set_halign(Gtk.Align.FILL)
+
+        pick_lab = Gtk.Label(label="Active path", xalign=0.5)
+        pick_lab.add_css_class("home-picker-label")
+        pick_lab.set_halign(Gtk.Align.CENTER)
+        picker.append(pick_lab)
+
+        profile_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         profile_row.add_css_class("home-profile-row")
         profile_row.set_halign(Gtk.Align.CENTER)
-        profile_row.set_valign(Gtk.Align.CENTER)
 
         self._profile_dd = Gtk.DropDown()
         self._profile_dd.add_css_class("home-profile-dd")
-        self._profile_dd.set_size_request(200, -1)
+        self._profile_dd.set_size_request(260, -1)
         self._profile_dd.set_tooltip_text("Active path")
         self._profile_dd.connect("notify::selected", self._on_profile_picked)
         self._profile_ids: list[str] = []
@@ -95,9 +119,14 @@ class HomePage(Gtk.Box):
         self._info_btn.set_valign(Gtk.Align.CENTER)
         self._info_btn.connect("clicked", self._on_info)
         profile_row.append(self._info_btn)
-        body.append(profile_row)
+        picker.append(profile_row)
+        card.append(picker)
 
-        # Next-step chip when Connect is blocked or empty
+        # Next-step + primary CTA
+        foot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        foot.add_css_class("home-foot")
+        foot.set_halign(Gtk.Align.CENTER)
+
         self._next = Gtk.Button()
         self._next.add_css_class("flat")
         self._next.add_css_class("home-next")
@@ -105,21 +134,19 @@ class HomePage(Gtk.Box):
         self._next.set_visible(False)
         self._next.connect("clicked", self._on_next)
         self._next_target: str | None = None
-        body.append(self._next)
-
-        cta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        cta_row.set_halign(Gtk.Align.CENTER)
-        cta_row.set_hexpand(True)
+        foot.append(self._next)
 
         self._primary = Gtk.Button(label="Connect")
         self._primary.add_css_class("suggested-action")
         self._primary.add_css_class("home-cta")
-        self._primary.set_size_request(160, -1)
+        self._primary.set_size_request(220, 42)
+        self._primary.set_halign(Gtk.Align.CENTER)
         self._primary.connect("clicked", self._on_primary)
-        cta_row.append(self._primary)
-        body.append(cta_row)
+        foot.append(self._primary)
+        card.append(foot)
 
-        self.append(fit_body(body, margin=12))
+        stage.append(card)
+        self.append(fit_body(stage, margin=24))
         self.refresh()
 
     def _nav(self, page_id: str) -> None:

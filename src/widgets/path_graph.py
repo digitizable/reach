@@ -8,7 +8,7 @@ from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 from app_config import project_root
 
-_ICON_SIZE = 18
+_ICON_SIZE = 22
 
 # Custom brand marks (not recolored by CSS).
 _ASSET_LOGOS: tuple[tuple[tuple[str, ...], str, str], ...] = (
@@ -123,7 +123,7 @@ def _arrow(*, muted: bool = False) -> Gtk.Widget:
         lab.add_css_class("path-arrow-muted")
     lab.set_valign(Gtk.Align.CENTER)
     lab.set_halign(Gtk.Align.CENTER)
-    lab.set_margin_bottom(12)
+    lab.set_margin_bottom(14)
     return lab
 
 
@@ -136,7 +136,7 @@ def _hop_node(
     sublabel: str = "",
     also: str = "",
 ) -> Gtk.Widget:
-    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
     col.add_css_class("path-node")
     col.add_css_class(f"path-kind-{kind}")
     col.add_css_class(f"path-role-{role}")
@@ -148,12 +148,19 @@ def _hop_node(
     col.set_valign(Gtk.Align.CENTER)
     col.set_hexpand(False)
 
-    col.append(_image_for(title if kind != "you" else "you", kind=kind, also=also or title))
+    icon_well = Gtk.Box()
+    icon_well.add_css_class("path-node-well")
+    icon_well.set_halign(Gtk.Align.CENTER)
+    icon_well.set_valign(Gtk.Align.CENTER)
+    icon_well.append(
+        _image_for(title if kind != "you" else "you", kind=kind, also=also or title)
+    )
+    col.append(icon_well)
 
     lab = Gtk.Label(label=title)
     lab.add_css_class("path-node-label")
     lab.set_halign(Gtk.Align.CENTER)
-    lab.set_max_width_chars(11)
+    lab.set_max_width_chars(12)
     col.append(lab)
 
     # Role tag under the name: exit / not exit / underlay
@@ -208,7 +215,7 @@ def path_graph(
         root.append(empty_l)
         return root
 
-    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
     row.add_css_class("path-row")
     row.set_halign(Gtk.Align.CENTER)
     row.set_valign(Gtk.Align.CENTER)
