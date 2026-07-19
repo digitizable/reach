@@ -43,9 +43,17 @@ class SettingsPage(Gtk.Box):
             )
         )
 
+        # Readable column width on wide desktops (not edge-to-edge forms).
+        outer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        outer.set_hexpand(True)
+        outer.set_halign(Gtk.Align.CENTER)
+
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         body.add_css_class("page-body")
+        body.add_css_class("settings-column")
         body.set_valign(Gtk.Align.START)
+        body.set_size_request(520, -1)
+        body.set_hexpand(True)
 
         body.append(self._group_core())
         body.append(self._group_session())
@@ -56,7 +64,8 @@ class SettingsPage(Gtk.Box):
         body.append(self._group_logging())
         body.append(self._group_advanced())
 
-        self.append(scroll_body(body, margin=12))
+        outer.append(body)
+        self.append(scroll_body(outer, margin=16))
 
     # ── Groups ────────────────────────────────────────────────────
 

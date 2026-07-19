@@ -12,9 +12,9 @@ Linux only for now.
 
 **Formerly Spectre Desktop** (config under `~/.config/spectre-desktop` and `~/.local/share/spectre-desktop` migrates to `reach` on first run).
 
-## Status (0.4.1)
+## Status (0.4.2)
 
-Official **Mullvad VPN** integration, **tray applet**, routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, **Reach China / territories** UI, and core handoff for kill switch + system routing.
+Desktop-sized shell (default **720×780**, resizable, remembers size). **Paths** and **Adapters** use master–detail; **Doors** is two-pane; **Tools** card grid; **Settings** readable column. Mullvad, tray, preflight, exclude apps, territories.
 
 ## What it is
 

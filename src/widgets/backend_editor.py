@@ -24,12 +24,12 @@ class BackendEditorDialog(Adw.MessageDialog):
         on_save: Callable[[dict], None] | None = None,
         on_error: Callable[[str], None] | None = None,
     ) -> None:
-        title = "Edit backend" if backend else "New backend"
+        title = "Edit adapter" if backend else "New adapter"
         super().__init__(
             transient_for=parent,
             heading=title,
-            body="Configure an adapter Spectre can use on a path hop. "
-            "Incomplete drafts are allowed — Connect requires complete backends.",
+            body="Configure an adapter hops can use. "
+            "Incomplete drafts are allowed — Connect requires complete adapters.",
         )
         self._on_save = on_save
         self._on_error = on_error
@@ -44,7 +44,7 @@ class BackendEditorDialog(Adw.MessageDialog):
 
         self._root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self._root.set_margin_top(6)
-        self._root.set_size_request(320, -1)
+        self._root.set_size_request(440, -1)
 
         self._name = Gtk.Entry()
         self._name.set_placeholder_text("Display name")

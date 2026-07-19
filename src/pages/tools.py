@@ -74,9 +74,11 @@ class ToolsPage(Gtk.Box):
 
         self.append(page_header("Tools"))
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         body.add_css_class("page-body")
+        body.add_css_class("tools-body")
         body.set_valign(Gtk.Align.START)
+        body.set_hexpand(True)
 
         lede = Gtk.Label(
             label=(
@@ -91,8 +93,21 @@ class ToolsPage(Gtk.Box):
         lede.add_css_class("tools-lede")
         body.append(lede)
 
+        grid = Gtk.FlowBox()
+        grid.add_css_class("tools-grid")
+        grid.set_valign(Gtk.Align.START)
+        grid.set_max_children_per_line(3)
+        grid.set_min_children_per_line(1)
+        grid.set_selection_mode(Gtk.SelectionMode.NONE)
+        grid.set_homogeneous(True)
+        grid.set_column_spacing(12)
+        grid.set_row_spacing(12)
+        grid.set_hexpand(True)
         for card in _TOOLS:
-            body.append(self._card(card))
+            cell = Gtk.FlowBoxChild()
+            cell.set_child(self._card(card))
+            grid.append(cell)
+        body.append(grid)
 
         doors = Gtk.Button(label="Open Doors…")
         doors.add_css_class("flat")
@@ -101,7 +116,7 @@ class ToolsPage(Gtk.Box):
         doors.connect("clicked", self._go_doors)
         body.append(doors)
 
-        self.append(scroll_body(body, margin=12))
+        self.append(scroll_body(body, margin=16))
 
     def _go_doors(self, *_a) -> None:
         if self._on_navigate is not None:
@@ -111,6 +126,8 @@ class ToolsPage(Gtk.Box):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.add_css_class("tool-card")
         box.set_hexpand(True)
+        box.set_vexpand(True)
+        box.set_size_request(200, -1)
 
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         name = Gtk.Label(label=tool.name, xalign=0)

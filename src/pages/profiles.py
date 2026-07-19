@@ -1,4 +1,4 @@
-"""Profiles — create, select, edit, delete path recipes."""
+"""Paths — master–detail list of path recipes (profiles)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,11 @@ from collections.abc import Callable
 
 from gi.repository import Adw, Gtk
 
+from core.path_explain import explain_profile
+from core.readiness import profile_readiness
 from services import Services
-from widgets.chrome import fit_body, page_header
+from widgets.chrome import clear_box, page_header, scroll_body
+from widgets.path_graph import path_graph
 from widgets.profile_editor import ProfileEditorDialog
 from widgets.profile_list import ProfileList
 
@@ -23,6 +26,7 @@ class ProfilesPage(Gtk.Box):
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("page")
+        self.add_css_class("master-detail-page")
         self.set_hexpand(True)
         self.set_vexpand(True)
         self._services = services
@@ -43,41 +47,122 @@ class ProfilesPage(Gtk.Box):
             )
         )
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        body.add_css_class("page-body")
-        body.set_valign(Gtk.Align.START)
-        body.set_vexpand(True)
+        split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        split.add_css_class("master-detail")
+        split.set_hexpand(True)
+        split.set_vexpand(True)
+
+        # ── Master (list) ─────────────────────────────────────────
+        master = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        master.add_css_class("master-pane")
+        master.set_size_request(260, -1)
+        master.set_hexpand(False)
+        master.set_vexpand(True)
 
         self._empty = Gtk.Label(
-            label="No paths yet.\nCreate one, or open Doors for territory ingress.",
+            label="No paths yet.\nCreate one, or open Doors.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")
         self._empty.set_halign(Gtk.Align.CENTER)
-        self._empty.set_margin_top(24)
-        body.append(self._empty)
+        self._empty.set_margin_top(16)
+        master.append(self._empty)
 
+        list_scroll = Gtk.ScrolledWindow()
+        list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        list_scroll.set_vexpand(True)
+        list_scroll.set_hexpand(True)
         self._list = ProfileList(
             on_selected=self._picked,
             on_activate=self._edit_id,
         )
-        body.append(self._list)
+        list_scroll.set_child(self._list)
+        master.append(list_scroll)
+        split.append(master)
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        actions.set_halign(Gtk.Align.END)
-        self._edit_btn = Gtk.Button(label="Edit")
-        self._edit_btn.add_css_class("flat")
+        sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        sep.add_css_class("master-detail-sep")
+        split.append(sep)
+
+        # ── Detail ────────────────────────────────────────────────
+        detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        detail.add_css_class("detail-pane")
+        detail.set_hexpand(True)
+        detail.set_vexpand(True)
+
+        self._detail_empty = Gtk.Label(
+            label="Select a path, or create one.",
+            justify=Gtk.Justification.CENTER,
+        )
+        self._detail_empty.add_css_class("muted")
+        self._detail_empty.set_valign(Gtk.Align.CENTER)
+        self._detail_empty.set_vexpand(True)
+        detail.append(self._detail_empty)
+
+        self._detail_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self._detail_body.set_hexpand(True)
+        self._detail_body.set_vexpand(True)
+        self._detail_body.set_visible(False)
+
+        self._detail_name = Gtk.Label(label="", xalign=0)
+        self._detail_name.add_css_class("detail-title")
+        self._detail_name.set_wrap(True)
+        self._detail_body.append(self._detail_name)
+
+        self._detail_tag = Gtk.Label(label="", xalign=0)
+        self._detail_tag.add_css_class("detail-tag")
+        self._detail_body.append(self._detail_tag)
+
+        self._detail_summary = Gtk.Label(label="", xalign=0, wrap=True)
+        self._detail_summary.add_css_class("muted")
+        self._detail_body.append(self._detail_summary)
+
+        self._path_host = Gtk.Box()
+        self._path_host.set_halign(Gtk.Align.START)
+        self._detail_body.append(self._path_host)
+
+        self._detail_hops = Gtk.Label(label="", xalign=0, wrap=True)
+        self._detail_hops.add_css_class("detail-meta")
+        self._detail_body.append(self._detail_hops)
+
+        self._detail_ready = Gtk.Label(label="", xalign=0, wrap=True)
+        self._detail_ready.add_css_class("detail-ready")
+        self._detail_body.append(self._detail_ready)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        actions.set_halign(Gtk.Align.START)
+        actions.set_margin_top(8)
+        self._edit_btn = Gtk.Button(label="Edit…")
+        self._edit_btn.add_css_class("suggested-action")
         self._edit_btn.set_sensitive(False)
         self._edit_btn.connect("clicked", self._on_edit)
         actions.append(self._edit_btn)
+        self._use_btn = Gtk.Button(label="Use on Home")
+        self._use_btn.add_css_class("flat")
+        self._use_btn.set_sensitive(False)
+        self._use_btn.set_tooltip_text("Set as active path for Connect")
+        self._use_btn.connect("clicked", self._on_use)
+        actions.append(self._use_btn)
         self._del_btn = Gtk.Button(label="Delete")
         self._del_btn.add_css_class("flat")
         self._del_btn.set_sensitive(False)
         self._del_btn.connect("clicked", self._on_delete)
         actions.append(self._del_btn)
-        body.append(actions)
+        self._detail_body.append(actions)
 
-        self.append(fit_body(body, margin=12))
+        detail.append(scroll_body(self._detail_body, margin=16))
+        # scroll_body always visible — toggle inner visibility via detail_empty
+        # Actually scroll_body wraps detail_body - need detail_body visibility.
+        # Put detail_body outside scroll when empty? Simpler: always show scroll
+        # but toggle children.
+        split.append(detail)
+        self.append(split)
+
+        # Fix: scroll_body already contains detail_body; empty sits alongside
+        # Rebuild detail pane structure cleanly - empty and body as siblings
+        # Currently I appended both empty and scroll(detail_body) to detail.
+        # Good - toggle visible on each.
+
         self.reload()
 
     def set_parent_window(self, window: Gtk.Window | None) -> None:
@@ -92,29 +177,96 @@ class ProfilesPage(Gtk.Box):
             selected_id=self._services.config.last_profile_id or None,
             backends=self._services.backends,
         )
-        has = self._list.selected_id() is not None
+        pid = self._list.selected_id() or self._services.config.last_profile_id
+        self._show_detail(pid if pid else None)
+
+    def _show_detail(self, profile_id: str | None) -> None:
+        profile = self._services.profiles.get(profile_id) if profile_id else None
+        has = profile is not None
+        self._detail_empty.set_visible(not has)
+        self._detail_body.set_visible(has)
+        # scroll parent of detail_body
+        parent = self._detail_body.get_parent()
+        while parent is not None and not isinstance(parent, Gtk.ScrolledWindow):
+            parent = parent.get_parent()
+        if parent is not None:
+            parent.set_visible(has)
+
         self._edit_btn.set_sensitive(has)
         self._del_btn.set_sensitive(has)
+        self._use_btn.set_sensitive(has)
+        if not has or profile is None:
+            return
+
+        backends = self._services.backends
+        explain = explain_profile(profile, backends)
+        routing = getattr(self._services.config, "routing_mode", "system") or "system"
+        ready = profile_readiness(
+            profile,
+            backends,
+            routing_mode=str(routing),
+            live=False,
+        )
+        self._detail_name.set_text(profile.name)
+        tag = "Ready" if ready.ok else "Incomplete"
+        if profile.favorite:
+            tag = f"★ {tag}"
+        self._detail_tag.set_text(tag)
+        if ready.ok:
+            self._detail_tag.remove_css_class("detail-tag-bad")
+            self._detail_tag.add_css_class("detail-tag-ok")
+        else:
+            self._detail_tag.remove_css_class("detail-tag-ok")
+            self._detail_tag.add_css_class("detail-tag-bad")
+
+        summary = (profile.summary or "").strip() or (profile.notes or "").strip()
+        self._detail_summary.set_text(summary)
+        self._detail_summary.set_visible(bool(summary))
+
+        clear_box(self._path_host)
+        self._path_host.append(
+            path_graph(
+                explain.kinds if explain.hops else [],
+                live=False,
+                empty="No hops",
+                labels=explain.labels or None,
+                roles=explain.roles or None,
+                sublabels=explain.sublabels or None,
+                caption=explain.caption,
+            )
+        )
+        self._detail_hops.set_text(explain.hops_line or "No hops")
+        if ready.ok:
+            self._detail_ready.set_text("Ready to Connect from Home.")
+        else:
+            self._detail_ready.set_text(ready.summary)
 
     def _picked(self, profile_id: str | None) -> None:
         if not profile_id:
-            self._edit_btn.set_sensitive(False)
-            self._del_btn.set_sensitive(False)
+            self._show_detail(None)
             return
         prev = self._services.config.last_profile_id
         if self._services.set_active_profile(profile_id) is None:
             return
-        self._edit_btn.set_sensitive(True)
-        self._del_btn.set_sensitive(True)
+        self._show_detail(profile_id)
         if self._on_changed is not None:
             self._on_changed()
-        # Selecting a different profile while live does not switch the path
         if prev != profile_id and self._services.is_path_connected():
             p = self._services.profiles.get(profile_id)
-            name = p.name if p else "profile"
+            name = p.name if p else "path"
             self._toast(
-                self._services.with_reconnect_hint(f"Active profile → {name}")
+                self._services.with_reconnect_hint(f"Active path → {name}")
             )
+
+    def _on_use(self, *_a) -> None:
+        pid = self._list.selected_id()
+        if not pid:
+            return
+        self._services.set_active_profile(pid)
+        p = self._services.profiles.get(pid)
+        self._toast(f"Active path → {p.name if p else 'path'}")
+        if self._on_changed:
+            self._on_changed()
 
     def _on_new(self, *_a) -> None:
         dialog = ProfileEditorDialog(
@@ -147,7 +299,6 @@ class ProfilesPage(Gtk.Box):
         profile = self._services.profiles.get(profile_id)
         if profile is None:
             return
-        # Ensure selection follows double-click
         self._services.set_active_profile(profile_id)
         dialog = ProfileEditorDialog(
             self._parent_window,
@@ -177,17 +328,17 @@ class ProfilesPage(Gtk.Box):
         self.reload()
         if self._on_changed:
             self._on_changed()
-        self._toast(self._services.with_reconnect_hint("Profile updated"))
+        self._toast(self._services.with_reconnect_hint("Path updated"))
 
     def _on_delete(self, *_a) -> None:
         pid = self._list.selected_id()
         if not pid:
             return
         profile = self._services.profiles.get(pid)
-        name = profile.name if profile else "profile"
+        name = profile.name if profile else "path"
         dialog = Adw.MessageDialog(
             transient_for=self._parent_window,
-            heading="Delete profile?",
+            heading="Delete path?",
             body=f"“{name}” will be removed. This cannot be undone.",
         )
         dialog.add_response("cancel", "Cancel")

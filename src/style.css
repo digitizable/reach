@@ -845,3 +845,83 @@ toast {
   opacity: 1;
   -gtk-icon-filter: none;
 }
+
+
+/* ── Desktop master–detail ───────────────────────────── */
+.master-detail {
+  min-height: 0;
+  background-color: #111111;
+}
+
+.master-pane {
+  background-color: #0f0f0f;
+  padding: 10px 8px 12px 10px;
+  min-width: 240px;
+}
+
+.detail-pane {
+  background-color: #111111;
+  min-width: 0;
+}
+
+.master-detail-sep {
+  background-color: #222222;
+  min-width: 1px;
+}
+
+.detail-title {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: #f0f0f0;
+  line-height: 1.2;
+}
+
+.detail-tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9a9a9a;
+}
+
+.detail-tag-ok {
+  color: #86efac;
+}
+
+.detail-tag-bad {
+  color: #f0a8a8;
+}
+
+.detail-meta {
+  font-size: 12px;
+  color: #b0b0b0;
+  line-height: 1.4;
+}
+
+.detail-ready {
+  font-size: 12px;
+  color: #a8b4c8;
+  line-height: 1.4;
+}
+
+.doors-left,
+.doors-right {
+  min-width: 0;
+}
+
+.tools-grid {
+  min-height: 0;
+}
+
+.tools-body {
+  max-width: 1100px;
+}
+
+.settings-column {
+  max-width: 560px;
+}
+
+.home-page {
+  /* breathing room on wide shell; content stays centered */
+}

@@ -22,11 +22,11 @@ class ProfileEditorDialog(Adw.MessageDialog):
         on_save: Callable[[dict], None] | None = None,
         on_error: Callable[[str], None] | None = None,
     ) -> None:
-        title = "Edit profile" if profile else "New profile"
+        title = "Edit path" if profile else "New path"
         super().__init__(
             transient_for=parent,
             heading=title,
-            body="Order hops and bind each to a configured backend.",
+            body="Order hops and bind each to a configured adapter.",
         )
         self._on_save = on_save
         self._on_error = on_error
@@ -44,7 +44,7 @@ class ProfileEditorDialog(Adw.MessageDialog):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(8)
         box.set_margin_bottom(4)
-        box.set_size_request(320, -1)
+        box.set_size_request(440, -1)
 
         self._name = Gtk.Entry()
         self._name.set_placeholder_text("Name")

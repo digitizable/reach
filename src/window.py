@@ -23,13 +23,18 @@ class ReachWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, *, services: Services) -> None:
         super().__init__(application=app, title=APPLICATION_NAME)
         self.add_css_class("reach-window")
-        # Compact operator panel — resizable for denser pages (Doors, Tools).
-        self.set_default_size(420, 640)
-        self.set_size_request(400, 560)
+        # Desktop operator shell — wide enough for master–detail / two-pane.
+        self.set_size_request(560, 640)
         self.set_resizable(True)
         self.set_icon_name(APPLICATION_ICON)
 
         self._services = services
+        w = int(getattr(services.config, "window_width", 0) or 0)
+        h = int(getattr(services.config, "window_height", 0) or 0)
+        if w >= 560 and h >= 640:
+            self.set_default_size(w, h)
+        else:
+            self.set_default_size(720, 780)
         self._nav_buttons: dict[str, Gtk.ToggleButton] = {}
         self._page_stack: Gtk.Stack | None = None
         self._toast_overlay: Adw.ToastOverlay
@@ -188,7 +193,23 @@ class ReachWindow(Adw.ApplicationWindow):
             pass
         return True  # keep timer
 
+    def _persist_geometry(self) -> None:
+        try:
+            w = int(self.get_width())
+            h = int(self.get_height())
+            if w < 400 or h < 400:
+                return
+            cfg = self._services.config
+            if cfg.window_width == w and cfg.window_height == h:
+                return
+            cfg.window_width = w
+            cfg.window_height = h
+            self._services.save_config()
+        except Exception:
+            pass
+
     def _on_close_request(self, *_a) -> bool:
+        self._persist_geometry()
         app = self.get_application()
         # Prefer hide-to-tray (Mullvad-style) when the applet is running
         if app is not None and hasattr(app, "should_close_to_tray"):

@@ -72,6 +72,10 @@ class AppConfig:
     tray_enabled: bool = True
     close_to_tray: bool = True
 
+    # Window geometry (0 = use app default)
+    window_width: int = 0
+    window_height: int = 0
+
     # Advanced
     mtu: int = 1280
     bind_address: str = "127.0.0.1"
