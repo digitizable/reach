@@ -1,4 +1,4 @@
-"""Check GitHub releases for Spectre Desktop updates."""
+"""Check GitHub releases for Reach updates."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from app_config import APPLICATION_VERSION
 
 # Official desktop repository
 GITHUB_OWNER = "digitizable"
-GITHUB_REPO = "spectre-desktop"
+GITHUB_REPO = "reach"
 GITHUB_RELEASES_LATEST = (
     f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 )
@@ -24,7 +24,7 @@ GITHUB_RELEASES_PAGE = (
 GITHUB_REPO_PAGE = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}"
 
 DEFAULT_CHECK_INTERVAL_HOURS = 24
-_USER_AGENT = f"Spectre-Desktop/{APPLICATION_VERSION} (+{GITHUB_REPO_PAGE})"
+_USER_AGENT = f"Reach/{APPLICATION_VERSION} (+{GITHUB_REPO_PAGE})"
 
 
 @dataclass(frozen=True)

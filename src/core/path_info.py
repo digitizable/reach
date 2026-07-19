@@ -35,7 +35,7 @@ DEFAULT_PROFILE_INFO: dict[str, str] = {
         "Mullvad app SOCKS is first (OS underlay). Spectre dials REALITY only; "
         "it cannot SOCKS-nest 10.64.0.1 through the VPS.\n\n"
         "• Public exit: REALITY server (not Mullvad)\n"
-        "• ISP sees: the Mullvad tunnel first (not Hetzner REALITY as the outer hop); "
+        "• ISP sees: the Mullvad tunnel first (not the REALITY server as the outer hop); "
         "REALITY runs inside that underlay\n"
         "• Mullvad Connection Check often shows “not Mullvad” — expected"
     ),
@@ -78,6 +78,27 @@ CUSTOM_INFO_PLACEHOLDER = (
     "• ISP sees: (edit this text — describe what your home ISP observes on the wire)"
 )
 
+REACH_CHINA_INFO = (
+    "Reach China — ingress (outside → China-side host).\n\n"
+    "Required path: VPN underlay first, then TLS-shaped hop (REALITY/Proxy) to a "
+    "host you operate in China. Spectre never dials China from clearnet.\n\n"
+    "• Public first hop: your VPN (WireGuard or Mullvad)\n"
+    "• Second hop: China-side endpoint (operator-owned)\n"
+    "• ISP sees: the VPN underlay first — not a direct clearnet path to China\n"
+    "• Success is outside vantage only — not proof for users inside CN\n"
+    "• Configure under Reach China; fill REALITY/Proxy and select a complete VPN backend"
+)
+
+REACH_CHINA_REVERSE_INFO = (
+    "Reach China — reverse (Composition III).\n\n"
+    "A willing process on a mainland-reachable host dials out with TCP REALITY "
+    "cover to your outside accept. Spectre then uses VPN underlay → SOCKS map.\n\n"
+    "• Export outside-accept.json + china-agent.json from Reach China\n"
+    "• Start accept, then agent, then Spectre Connect\n"
+    "• Equal door to inbound — no operator PRC-cloud KYC required for this mode\n"
+    "• Success is outside vantage only"
+)
+
 DEFAULT_PROFILE_IDS: frozenset[str] = frozenset(p.id for p in DEFAULT_PROFILES)
 
 
@@ -99,6 +120,17 @@ def resolve_profile_info(profile: Profile | None) -> str:
     built_in = DEFAULT_PROFILE_INFO.get(profile.id)
     if built_in:
         return built_in
+    # Reach China profiles without custom info
+    intent = (profile.path_intent or "").strip()
+    notes = profile.notes or ""
+    if intent == "ingress_cn_reverse" or "composition=reverse" in notes.lower():
+        return REACH_CHINA_REVERSE_INFO
+    if intent == "ingress_cn":
+        return REACH_CHINA_INFO
+    if (profile.name or "").strip().lower().startswith("reach china"):
+        if "reverse" in (profile.name or "").lower():
+            return REACH_CHINA_REVERSE_INFO
+        return REACH_CHINA_INFO
     return CUSTOM_INFO_PLACEHOLDER
 
 

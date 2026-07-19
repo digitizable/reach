@@ -1,4 +1,4 @@
-"""System tray applet for Spectre Desktop (StatusNotifierItem over D-Bus).
+"""System tray applet for Reach (StatusNotifierItem over D-Bus).
 
 Cinnamon uses xapp-sn-watcher → xapp-status applet:
 
@@ -209,7 +209,7 @@ def _menu_props(**kwargs: object) -> dict[str, GLib.Variant]:
     return out
 
 
-class SpectreTray:
+class ReachTray:
     def __init__(
         self,
         *,

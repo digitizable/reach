@@ -23,21 +23,21 @@ from core.updates import (
 )
 from services import Services
 from theme import apply_theme
-from tray import SpectreTray
-from window import SpectreWindow
+from tray import ReachTray
+from window import ReachWindow
 
 
-class SpectreApplication(Adw.Application):
+class ReachApplication(Adw.Application):
     def __init__(self) -> None:
         super().__init__(
             application_id=APPLICATION_ID,
             flags=Gio.ApplicationFlags.FLAGS_NONE,
         )
         GLib.set_application_name(APPLICATION_NAME)
-        self._window: SpectreWindow | None = None
+        self._window: ReachWindow | None = None
         self.services = Services.create()
         self._update_check_inflight = False
-        self._tray: SpectreTray | None = None
+        self._tray: ReachTray | None = None
         self._tray_timer: int | None = None
         self._quitting = False
         self._force_exit_id: int | None = None
@@ -66,7 +66,7 @@ class SpectreApplication(Adw.Application):
             self._window = win  # type: ignore[assignment]
             return
 
-        self._window = SpectreWindow(self, services=self.services)
+        self._window = ReachWindow(self, services=self.services)
         if self.services.config.start_minimized or (
             self.services.config.close_to_tray
             and self._tray is not None
@@ -170,7 +170,7 @@ class SpectreApplication(Adw.Application):
         except Exception:
             pass
         # GApplication sometimes logs shutdown but never leaves the main loop
-        # (half-quit zombies keep com.digitizable.spectre-desktop and block the
+        # (half-quit zombies keep com.digitizable.reach and block the
         # tray). Force-exit if we are still alive shortly after quit().
         if self._force_exit_id is None:
             self._force_exit_id = GLib.timeout_add(400, self._force_exit)
@@ -201,7 +201,7 @@ class SpectreApplication(Adw.Application):
             return
         if self._tray is not None and self._tray.available:
             return
-        tray = SpectreTray(
+        tray = ReachTray(
             on_show=self._tray_show_window,
             on_connect=self._tray_connect,
             on_disconnect=self._tray_disconnect,
@@ -453,7 +453,7 @@ class SpectreApplication(Adw.Application):
         parent = self.get_active_window()
         latest = result.latest_version or result.tag_name
         body = (
-            f"Spectre Desktop {latest} is available "
+            f"Reach {latest} is available "
             f"(you have {result.current_version}).\n\n"
             f"Open the GitHub release page to download and install."
         )

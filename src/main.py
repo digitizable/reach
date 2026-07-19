@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spectre Desktop — entry point."""
+"""Reach — entry point."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from gi.repository import GLib  # noqa: E402
 # Stable process/WM identity for Cinnamon snap/taskbar (not "main.py").
 GLib.set_prgname(APPLICATION_ID)
 
-from application import SpectreApplication  # noqa: E402
+from application import ReachApplication  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
-    code = SpectreApplication().run(argv if argv is not None else sys.argv)
+    code = ReachApplication().run(argv if argv is not None else sys.argv)
     # GApplication can return while non-daemon threads / half-quit state keep
     # the process alive and still owning the app bus name (blocks tray +
     # single-instance). Ensure we actually leave.

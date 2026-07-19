@@ -59,7 +59,7 @@ class AppConfig:
     log_to_file: bool = True
     notify_on_disconnect: bool = True
 
-    # Updates (GitHub Releases for digitizable/spectre-desktop)
+    # Updates (GitHub Releases for digitizable/reach)
     check_for_updates: bool = True
     update_check_interval_hours: int = 24
     last_update_check: str = ""  # ISO-8601 UTC of last attempt
@@ -212,7 +212,8 @@ class Services:
 
     def build_connect_payload(self, profile: Profile) -> dict[str, Any]:
         """Anticipated core payload — fully built on the desktop today."""
-        return {
+        intent = (getattr(profile, "path_intent", None) or "").strip()
+        payload: dict[str, Any] = {
             "profile_id": profile.id,
             "profile_name": profile.name,
             "hops": [
@@ -245,6 +246,9 @@ class Services:
                 "reconnect_delay_sec": self.config.reconnect_delay_sec,
             },
         }
+        if intent:
+            payload["path_intent"] = intent
+        return payload
 
     def connect_active(self) -> tuple[CoreStatus | None, Readiness]:
         """Validate locally (live probes), then hand off to core."""

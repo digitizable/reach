@@ -1,1 +1,1 @@
-"""Spectre Desktop pages."""
+"""Reach pages."""

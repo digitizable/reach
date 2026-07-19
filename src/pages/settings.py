@@ -1,4 +1,4 @@
-"""Settings — comprehensive Spectre Desktop configuration."""
+"""Settings — comprehensive Reach configuration."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ class SettingsPage(Gtk.Box):
         g = Adw.PreferencesGroup()
         g.set_title("Updates")
         g.set_description(
-            f"Check GitHub Releases for Spectre Desktop "
+            f"Check GitHub Releases for Reach "
             f"({GITHUB_URL}). Current version: {APPLICATION_VERSION}"
         )
 

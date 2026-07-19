@@ -405,6 +405,174 @@ def _spectre_nft_ready() -> bool:
     return False
 
 
+# ── Ingress (Reach China) ─────────────────────────────────────────
+
+
+def is_vpn_underlay(backend: Backend) -> bool:
+    """True if this backend is a VPN underlay hop (WireGuard/VPN or Mullvad app)."""
+    if backend.kind == "VPN":
+        return True
+    # Mullvad app full-tunnel + in-tunnel SOCKS counts as VPN underlay.
+    return is_mullvad_app_socks(backend)
+
+
+def is_ingress_cn_profile(profile: Profile | None) -> bool:
+    if profile is None:
+        return False
+    from core.reverse_agent import is_any_ingress_intent
+
+    return is_any_ingress_intent(
+        profile.path_intent, profile.notes, profile.name
+    )
+
+
+def is_ingress_cn_reverse_profile(profile: Profile | None) -> bool:
+    if profile is None:
+        return False
+    from core.reverse_agent import is_reverse_intent
+
+    return is_reverse_intent(profile.path_intent, profile.notes)
+
+
+def ingress_cn_issues(profile: Profile, backends: BackendStore) -> list[str]:
+    """Hard rules for Reach China: VPN first, then landing or reverse map."""
+    if is_ingress_cn_reverse_profile(profile):
+        return _ingress_cn_reverse_issues(profile, backends)
+    return _ingress_cn_inbound_issues(profile, backends)
+
+
+def _ingress_cn_underlay_issues(
+    profile: Profile, backends: BackendStore
+) -> list[str]:
+    issues: list[str] = []
+    hops = profile.hops
+    if len(hops) < 2:
+        issues.append(
+            "Reach China requires a VPN underlay hop before the China path "
+            "(at least two hops: VPN → landing or reverse map)"
+        )
+        return issues
+
+    first = backends.get(hops[0].backend_id) if hops[0].backend_id else None
+    if first is None:
+        issues.append("Reach China: first hop (VPN underlay) is missing a backend")
+    elif not is_vpn_underlay(first):
+        issues.append(
+            "Reach China: first hop must be a VPN underlay "
+            "(WireGuard/VPN backend or Mullvad app SOCKS) — "
+            "do not dial a China endpoint from clearnet"
+        )
+    elif not first.enabled:
+        issues.append(f"Reach China: VPN underlay “{first.name}” is disabled")
+    elif not first.is_configured():
+        issues.append(
+            f"Reach China: VPN underlay “{first.name}” is incomplete "
+            "(set WireGuard .conf, or use a configured Mullvad SOCKS backend)"
+        )
+
+    if len(hops) > 2:
+        issues.append(
+            "Reach China allows exactly two hops: VPN underlay → China path"
+        )
+    return issues
+
+
+def _ingress_cn_inbound_issues(
+    profile: Profile, backends: BackendStore
+) -> list[str]:
+    """Composition I: VPN → REALITY/Proxy to China host."""
+    issues = _ingress_cn_underlay_issues(profile, backends)
+    if any("at least two hops" in m for m in issues):
+        return issues
+
+    hops = profile.hops
+    last = backends.get(hops[-1].backend_id) if hops[-1].backend_id else None
+    if last is None:
+        issues.append("Reach China: China-side hop is missing a backend")
+    elif is_vpn_underlay(last):
+        issues.append(
+            "Reach China: last hop must be the China-side endpoint (REALITY or Proxy), "
+            "not another VPN"
+        )
+    elif last.kind not in ("REALITY", "Proxy"):
+        issues.append(
+            "Reach China: last hop must be REALITY (recommended) or Proxy to the "
+            "China-side host"
+        )
+    elif last.kind == "REALITY" and not (last.reality_sni or "").strip():
+        issues.append(
+            f"Reach China: REALITY backend “{last.name}” needs SNI "
+            "(TLS-shaped cover toward the China host)"
+        )
+    elif last.kind == "Proxy" and is_mullvad_app_socks(last):
+        issues.append(
+            "Reach China: last hop cannot be Mullvad SOCKS — use REALITY/Proxy "
+            "to the China host after the VPN underlay"
+        )
+    return issues
+
+
+def _ingress_cn_reverse_issues(
+    profile: Profile, backends: BackendStore
+) -> list[str]:
+    """Composition III: VPN → Proxy SOCKS map (agent already dialed out)."""
+    issues = _ingress_cn_underlay_issues(profile, backends)
+    if any("at least two hops" in m for m in issues):
+        return issues
+
+    hops = profile.hops
+    last = backends.get(hops[-1].backend_id) if hops[-1].backend_id else None
+    if last is None:
+        issues.append(
+            "Reach China reverse: SOCKS map hop is missing a backend "
+            "(local or SSH-forwarded map from outside accept)"
+        )
+    elif last.kind != "Proxy":
+        issues.append(
+            "Reach China reverse: last hop must be a Proxy SOCKS map "
+            "(from outside accept after agent dials out) — not REALITY to China"
+        )
+    elif is_mullvad_app_socks(last):
+        issues.append(
+            "Reach China reverse: last hop cannot be Mullvad SOCKS — "
+            "use the reverse map SOCKS (usually 127.0.0.1)"
+        )
+    elif not last.enabled:
+        issues.append(f"Reach China reverse: map backend “{last.name}” is disabled")
+    elif not last.is_configured():
+        issues.append(
+            f"Reach China reverse: map backend “{last.name}” is incomplete "
+            "(set SOCKS host/port where the reverse tunnel maps)"
+        )
+    return issues
+
+
+def ingress_cn_warnings(profile: Profile, backends: BackendStore) -> list[str]:
+    if is_ingress_cn_reverse_profile(profile):
+        warns: list[str] = [
+            "Inverse Snowflake: client must be dialing out (and map up) before SOCKS works. "
+            "Python path is cleartext+token until REALITY wrap ships.",
+            "Inverse Snowflake: success is outside vantage only — "
+            "not proof for users inside CN.",
+            "Inverse Snowflake: foothold is peer/lab/field — Spectre exports the client; "
+            "it does not provision M.",
+        ]
+    else:
+        warns = [
+            "Reach China: success is from this outside vantage only — "
+            "not proof for users inside CN.",
+            "Reach China: China-side host is operator-owned; Spectre does not provision it.",
+        ]
+    if profile.hops:
+        first = backends.get(profile.hops[0].backend_id) if profile.hops[0].backend_id else None
+        if first is not None and is_mullvad_app_socks(first):
+            warns.append(
+                "VPN underlay is Mullvad app: connect Mullvad first (or allow auto-connect), "
+                "then Spectre dials the China path inside that underlay."
+            )
+    return warns
+
+
 # ── Public API ─────────────────────────────────────────────────────
 
 
@@ -452,6 +620,12 @@ def profile_readiness(
         for ci in composition_issues(profile, backends):
             issues.append(ci.message)
 
+    # Reach China: VPN underlay required before any China-side hop.
+    if is_ingress_cn_profile(profile):
+        for msg in ingress_cn_issues(profile, backends):
+            if msg not in issues:
+                issues.append(msg)
+
     if live:
         issues.extend(
             live_policy_issues(
@@ -461,6 +635,10 @@ def profile_readiness(
         )
 
     warns = routing_warnings(profile, backends, routing_mode=routing_mode)
+    if is_ingress_cn_profile(profile):
+        for w in ingress_cn_warnings(profile, backends):
+            if w not in warns:
+                warns.append(w)
     return Readiness(ok=not issues, issues=issues, warnings=warns)
 
 

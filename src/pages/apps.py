@@ -73,7 +73,9 @@ class AppsPage(Gtk.Box):
             "Launch apps outside Spectre (clearnet). Preferred: clearnet-run "
             "netns. Fallback: mullvad-exclude. Setup once: spectre setup-clearnet. "
             "Firefox: first exclude copies your default profile into a Spectre-only "
-            "profile (under this user account); menu Firefox keeps the real default."
+            "profile (under this user account); menu Firefox keeps the real default. "
+            "Spotify: first exclude copies ~/.config/spotify (login) into a "
+            "Spectre-only config so the clearnet instance stays signed in."
         )
         top.append(self._hint)
 

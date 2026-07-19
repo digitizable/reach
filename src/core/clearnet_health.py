@@ -63,6 +63,45 @@ def _report(on_progress: ProgressCb | None, fraction: float, label: str) -> None
         pass
 
 
+# Cloudflare down endpoint; 5 MiB is enough to get past TLS + TCP slow-start
+# without making Apps → Check feel multi-minute. 1 MiB samples read ~3–5× low.
+_SPEED_SAMPLE_BYTES = 5_000_000
+_SPEED_SAMPLE_URL = (
+    f"https://speed.cloudflare.com/__down?bytes={_SPEED_SAMPLE_BYTES}"
+)
+
+
+def _speed_sample_mbps(*, timeout_sec: float = 12.0) -> float | None:
+    """Return a short HTTPS download sample in Mbit/s, or None."""
+    try:
+        r = subprocess.run(  # noqa: S603
+            [
+                "curl",
+                "-4",
+                "-sS",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{speed_download}",
+                "--max-time",
+                str(max(4, int(timeout_sec))),
+                _SPEED_SAMPLE_URL,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec + 2.0,
+            check=False,
+            start_new_session=True,
+        )
+        out = (r.stdout or "").strip()
+        if r.returncode == 0 and out.replace(".", "", 1).isdigit():
+            bps = float(out)
+            return (bps * 8) / 1_000_000
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    return None
+
+
 def _sudo_n(*args: str, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
     """Run with sudo -n; never hang the UI (caller should be off the main thread)."""
     sudo = shutil.which("sudo") or "sudo"
@@ -208,34 +247,11 @@ def _fallback_probe(on_progress: ProgressCb | None = None) -> ClearnetHealth:
             ok = False
 
         _report(on_progress, 0.7, "Speed sample…")
-        try:
-            r = subprocess.run(  # noqa: S603
-                [
-                    "curl",
-                    "-4",
-                    "-sS",
-                    "-o",
-                    "/dev/null",
-                    "-w",
-                    "%{speed_download}",
-                    "--max-time",
-                    "4",
-                    "https://speed.cloudflare.com/__down?bytes=1000000",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=6,
-                check=False,
-                start_new_session=True,
-            )
-            out = (r.stdout or "").strip()
-            if r.returncode == 0 and out.replace(".", "", 1).isdigit():
-                bps = float(out)
-                sample = (bps * 8) / 1_000_000
-                lines.append(f"sample_mbps: {sample:.0f}")
-            else:
-                lines.append("sample_mbps: n/a")
-        except (OSError, subprocess.TimeoutExpired, ValueError):
+        # ~5 MiB — a 1 MiB sample under-reports badly (TLS + slow-start).
+        sample = _speed_sample_mbps(timeout_sec=12.0)
+        if sample is not None:
+            lines.append(f"sample_mbps: {sample:.0f}")
+        else:
             lines.append("sample_mbps: n/a")
     else:
         lines.append(
@@ -269,7 +285,8 @@ def check_clearnet(
     if helper:
         _report(on_progress, 0.2, "Running clearnet-netns check…")
         try:
-            r = _sudo_n(helper, "check", timeout=12.0)
+            # Newer helpers do a real probe; older ones only have setup/status.
+            r = _sudo_n(helper, "check", timeout=18.0)
             out = (r.stdout or "").strip()
             err = (r.stderr or "").strip()
             if r.returncode in (0, 1) and out and "health:" in out.lower():
@@ -278,6 +295,23 @@ def check_clearnet(
                 h.can_repair = True
                 if r.returncode != 0:
                     h.ok = False
+                # Tiny helper samples (1 MiB) under-report; optionally refine.
+                if h.sample_mbps is not None and h.sample_mbps < 50:
+                    local = _speed_sample_mbps(timeout_sec=12.0)
+                    if local is not None and local > h.sample_mbps * 1.3:
+                        h.detail_lines.append(
+                            f"note: helper sample ~{h.sample_mbps:.0f} Mbit/s; "
+                            f"longer sample ~{local:.0f} Mbit/s"
+                        )
+                        h.sample_mbps = local
+                        # Refresh the human summary's sample clause.
+                        bits = [
+                            p
+                            for p in h.summary.split(" · ")
+                            if not p.startswith("~") or "Mbit/s" not in p
+                        ]
+                        bits.append(f"~{local:.0f} Mbit/s sample")
+                        h.summary = " · ".join(bits)
                 _report(on_progress, 1.0, "Done")
                 return h
             if r.returncode == 124 or err == "timeout":
@@ -290,6 +324,15 @@ def check_clearnet(
                 fb = _fallback_probe(on_progress)
                 fb.detail_lines.append("sudo: password required for full check")
                 fb.can_repair = False
+                _report(on_progress, 1.0, "Done")
+                return fb
+            # Old clearnet-netns without `check` prints usage and exits 2.
+            if "usage:" in (err + out).lower() or r.returncode == 2:
+                fb = _fallback_probe(on_progress)
+                fb.detail_lines.append(
+                    "helper is outdated (no check) — re-run: spectre setup-clearnet"
+                )
+                fb.can_repair = True
                 _report(on_progress, 1.0, "Done")
                 return fb
             if out or err:

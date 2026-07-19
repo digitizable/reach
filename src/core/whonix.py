@@ -1,4 +1,4 @@
-"""Whonix / Qubes-Whonix environment detection for Spectre Desktop."""
+"""Whonix / Qubes-Whonix environment detection for Reach."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-/* Spectre Desktop — compact modern dark
+/* Reach — compact modern dark
  *
  *   chrome  #0d0d0d  rail / header
  *   field   #111111  content frame
@@ -8,7 +8,7 @@
  * Color only on status dots.
  */
 
-window.spectre-window {
+window.reach-window {
   background-color: #0d0d0d;
   color: #e8e8e8;
 }
@@ -588,4 +588,179 @@ popover.menu listview > row:selected {
 
 toast {
   color: #e8e8e8;
+}
+
+/* ── China ingress (Reach China) ─────────────────────── */
+.preview-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c9a227;
+  background-color: rgba(201, 162, 39, 0.12);
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.china-ingress-banner {
+  background-color: #181818;
+  border: 1px solid #333333;
+  border-left: 3px solid #c9a227;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 12px;
+  align-items: start;
+}
+
+.reach-territory-map {
+  opacity: 0.92;
+  min-width: 72px;
+  min-height: 72px;
+  margin-top: 2px;
+}
+
+.china-soon-banner {
+  border-left-color: #666;
+}
+
+.china-soon-banner .china-ingress-banner-title {
+  color: #b0b0b0;
+}
+
+.china-ingress-banner-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: #e8c84a;
+}
+
+.china-ingress-banner-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9a9a9a;
+}
+
+.china-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.china-path-diagram {
+  padding: 8px 4px 4px;
+}
+
+.china-path-diagram-label {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #777;
+}
+
+.china-path-row {
+  padding: 6px 0;
+}
+
+.china-path-chip {
+  font-size: 10px;
+  line-height: 1.25;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background-color: #1a1a1a;
+  color: #888;
+}
+
+.china-path-chip-active {
+  border-color: rgba(201, 162, 39, 0.55);
+  background-color: rgba(201, 162, 39, 0.1);
+  color: #e8c84a;
+  font-weight: 600;
+}
+
+.china-path-arrow {
+  font-size: 14px;
+  color: #555;
+  padding: 0 2px;
+}
+
+.china-path-caption {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.china-ready-list {
+  padding: 4px 0;
+}
+
+.china-ready-mark {
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 1.1em;
+}
+
+.china-ready-text {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.china-ready-ok {
+  color: #8bc48a;
+}
+
+.china-ready-pending {
+  color: #888;
+}
+
+.china-ready-summary {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.china-saved-list {
+  padding: 2px 0;
+}
+
+.china-saved-row {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #2a2a2a;
+  background-color: #161616;
+}
+
+.china-saved-name {
+  font-size: 12px;
+  color: #ccc;
+}
+
+/* Map/flag rail assets: white SVG, opacity matches symbolic icon greys */
+.nav-btn-flag image,
+.nav-btn.nav-btn-flag image,
+.nav-flag,
+.nav-map {
+  -gtk-icon-filter: none;
+  /* ~#666 on dark rail — same unselected grey as .nav-btn */
+  opacity: 0.40;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.nav-btn-flag:hover image,
+.nav-btn-flag:hover .nav-flag,
+.nav-btn-flag:hover .nav-map {
+  /* ~#d0d0d0 hover like .nav-btn:hover */
+  opacity: 0.82;
+}
+
+.nav-btn-flag:checked image,
+.nav-btn-flag.nav-btn-active image,
+.nav-btn-flag:checked .nav-flag,
+.nav-btn-flag.nav-btn-active .nav-flag,
+.nav-btn-flag:checked .nav-map,
+.nav-btn-flag.nav-btn-active .nav-map {
+  /* full white like selected symbolic icons */
+  opacity: 1;
+  -gtk-icon-filter: none;
 }

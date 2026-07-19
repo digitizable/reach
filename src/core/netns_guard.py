@@ -1,6 +1,6 @@
 """Detect accidental launch inside the clearnet exclude netns.
 
-Spectre Desktop must run on the host network namespace. If it is started
+Reach must run on the host network namespace. If it is started
 inside ``clearnet`` (e.g. via clearnet-run), Mullvad SOCKS at 10.64.0.1 is
 unreachable and Connect appears frozen or fails after long timeouts.
 """
@@ -73,7 +73,7 @@ def in_clearnet_netns() -> bool:
 
 def clearnet_netns_block_message() -> str:
     return (
-        "Spectre Desktop is running inside the clearnet exclude network "
+        "Reach is running inside the clearnet exclude network "
         "(wrong place for Connect). Quit and open Spectre from the menu — "
         "not via Exclude / clearnet-run."
     )

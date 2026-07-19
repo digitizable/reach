@@ -1,4 +1,4 @@
-"""Main window — compact rail + three pages."""
+"""Main window — compact rail + stacked pages."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from app_config import APPLICATION_ICON, APPLICATION_NAME, project_root
 from core.client import CoreState
 from pages.apps import AppsPage
 from pages.backends import BackendsPage
+from pages.china_ingress import ChinaIngressPage
 from pages.home import HomePage
 from pages.nav import DEFAULT_PAGE, NAV_ITEMS, NavItem
 from pages.profiles import ProfilesPage
@@ -17,10 +18,10 @@ from pages.settings import SettingsPage
 from services import Services
 
 
-class SpectreWindow(Adw.ApplicationWindow):
+class ReachWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, *, services: Services) -> None:
         super().__init__(application=app, title=APPLICATION_NAME)
-        self.add_css_class("spectre-window")
+        self.add_css_class("reach-window")
         # Fixed shell — slightly roomier, not resizable.
         self.set_default_size(400, 600)
         self.set_size_request(400, 600)
@@ -35,6 +36,7 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._profiles: ProfilesPage | None = None
         self._backends: BackendsPage | None = None
         self._apps: AppsPage | None = None
+        self._china: ChinaIngressPage | None = None
         self._settings: SettingsPage | None = None
         self._window_title: Adw.WindowTitle | None = None
         self._ready = False
@@ -272,13 +274,40 @@ class SpectreWindow(Adw.ApplicationWindow):
         rail.append(spacer)
         return rail
 
+    def _nav_icon(self, item: NavItem, *, size: int = 16) -> Gtk.Widget:
+        """Symbolic icon, or crisp asset SVG (e.g. national flag) when set."""
+        asset = getattr(item, "icon_asset", None)
+        if asset:
+            path = project_root() / "data" / "assets" / asset
+            if path.is_file():
+                scale = self._display_scale()
+                # Square asset box (map silhouettes / flags fitted inside).
+                logical = size
+                px = logical * scale
+                try:
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_size(str(path), px, px)
+                    texture = Gdk.Texture.new_for_pixbuf(pb)
+                    img = Gtk.Image.new_from_paintable(texture)
+                except GLib.Error:
+                    img = Gtk.Image.new_from_file(str(path))
+                img.set_pixel_size(size)
+                img.set_size_request(logical, logical)
+                img.add_css_class("nav-flag")
+                img.add_css_class("nav-map")
+                img.set_halign(Gtk.Align.CENTER)
+                img.set_valign(Gtk.Align.CENTER)
+                return img
+        icon = Gtk.Image.new_from_icon_name(item.icon_name)
+        icon.set_pixel_size(size)
+        return icon
+
     def _nav_button(self, item: NavItem) -> Gtk.ToggleButton:
         btn = Gtk.ToggleButton()
         btn.add_css_class("nav-btn")
+        if getattr(item, "icon_asset", None):
+            btn.add_css_class("nav-btn-flag")
         btn.set_tooltip_text(item.tooltip)
-        icon = Gtk.Image.new_from_icon_name(item.icon_name)
-        icon.set_pixel_size(16)
-        btn.set_child(icon)
+        btn.set_child(self._nav_icon(item, size=16))
         btn.connect("toggled", self._on_nav, item.id)
         return btn
 
@@ -333,6 +362,13 @@ class SpectreWindow(Adw.ApplicationWindow):
             on_toast=self.toast,
             on_navigate=self._navigate,
         )
+        self._china = ChinaIngressPage(
+            self._services,
+            parent_window=self,
+            on_toast=self.toast,
+            on_changed=self._on_data_changed,
+            on_navigate=self._navigate,
+        )
         app = self.get_application()
         check_cb = None
         if app is not None and hasattr(app, "start_update_check"):
@@ -348,6 +384,7 @@ class SpectreWindow(Adw.ApplicationWindow):
         stack.add_named(self._profiles, "profiles")
         stack.add_named(self._backends, "backends")
         stack.add_named(self._apps, "apps")
+        stack.add_named(self._china, "china")
         stack.add_named(self._settings, "settings")
         self._page_stack = stack
         return stack
@@ -364,6 +401,8 @@ class SpectreWindow(Adw.ApplicationWindow):
             self._profiles.reload()
         if self._backends is not None:
             self._backends.reload()
+        if self._china is not None and hasattr(self._china, "reload"):
+            self._china.reload()
         # Apps list is large — only refresh status line unless search/filter needs rebuild
         if self._apps is not None:
             if hasattr(self._apps, "refresh_status_line"):
@@ -392,6 +431,8 @@ class SpectreWindow(Adw.ApplicationWindow):
             self._profiles.reload()
         if self._backends is not None:
             self._backends.reload()
+        if self._china is not None and hasattr(self._china, "reload"):
+            self._china.reload()
         if self._apps is not None and hasattr(self._apps, "refresh_status_line"):
             self._apps.refresh_status_line()
         self._sync_chrome()
@@ -410,6 +451,9 @@ class SpectreWindow(Adw.ApplicationWindow):
         self._page_stack.set_visible_child_name(page_id)
         self._set_nav_selected(page_id)
         self._sync_chrome()
+
+        if page_id == "china" and self._china is not None and hasattr(self._china, "reload"):
+            self._china.reload()
 
         # Cheap, deferred updates only where the page needs a status line tweak
         if page_id == "home" and self._home is not None:
@@ -451,6 +495,22 @@ class SpectreWindow(Adw.ApplicationWindow):
             CoreState.CONNECTED: "Protected",
         }
         if self._window_title is not None:
+            # China ingress page is UI-only; keep that explicit in the header.
+            page_id = (
+                self._page_stack.get_visible_child_name()
+                if self._page_stack is not None
+                else None
+            )
+            if page_id == "china":
+                if st.state == CoreState.CONNECTED:
+                    self._window_title.set_subtitle(
+                        st.path_summary or "Reach · connected"
+                    )
+                else:
+                    self._window_title.set_subtitle(
+                        "Reach · territory ingress (China default)"
+                    )
+                return
             sub = subtitles.get(st.state, st.state.value)
             # When protected, show which path the *core* has up (not a stale label).
             if st.state == CoreState.CONNECTED and st.path_summary:

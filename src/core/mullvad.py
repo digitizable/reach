@@ -1,4 +1,4 @@
-"""Official Mullvad VPN Linux CLI integration for Spectre Desktop.
+"""Official Mullvad VPN Linux CLI integration for Reach.
 
 Spectre does not replace the Mullvad app. This module probes status and can
 request connect/disconnect via the ``mullvad`` CLI, matching the core package

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Reach
+GenericName=Reach
+Comment=Operator shell for paths, territories, and privacy tools (GTK4 / libadwaita)
+Exec=@EXEC@
+Icon=com.digitizable.reach
+Terminal=false
+Categories=Network;Security;
+Keywords=reach;spectre;vpn;tor;privacy;proxy;reality;drift;mirage;
+StartupNotify=true
+StartupWMClass=com.digitizable.reach
+DBusActivatable=false

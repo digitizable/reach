@@ -49,6 +49,8 @@ class Profile:
     # User-editable dashboard “i” text. Empty → built-in default (if known id)
     # or “Custom configuration.”
     info: str = ""
+    # Optional product intent: "" | "ingress_cn" (Reach China profiles)
+    path_intent: str = ""
 
     def hop_kinds(self) -> list[str]:
         return [h.kind for h in self.hops]
@@ -57,7 +59,7 @@ class Profile:
         return " → ".join(self.hop_kinds()) if self.hops else "No hops"
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id": self.id,
             "name": self.name,
             "summary": self.summary,
@@ -68,6 +70,9 @@ class Profile:
                 {"kind": h.kind, "backend_id": h.backend_id} for h in self.hops
             ],
         }
+        if self.path_intent:
+            d["path_intent"] = self.path_intent
+        return d
 
 
 def _parse_hop(item: object) -> Hop | None:
@@ -98,6 +103,7 @@ def _parse_profile(item: dict) -> Profile | None:
         notes=str(item.get("notes", "")),
         favorite=bool(item.get("favorite", False)),
         info=str(item.get("info", "")),
+        path_intent=str(item.get("path_intent", "") or ""),
     )
 
 
@@ -275,6 +281,7 @@ class ProfileStore:
         notes: str = "",
         favorite: bool = False,
         info: str = "",
+        path_intent: str = "",
     ) -> Profile:
         name = name.strip()
         if not name:
@@ -295,6 +302,7 @@ class ProfileStore:
             notes=notes.strip(),
             favorite=favorite,
             info=info.strip(),
+            path_intent=(path_intent or "").strip(),
         )
         self._profiles.append(profile)
         self.save()
@@ -328,6 +336,8 @@ class ProfileStore:
             profile.favorite = bool(fields["favorite"])
         if "info" in fields:
             profile.info = str(fields["info"]).strip()
+        if "path_intent" in fields:
+            profile.path_intent = str(fields["path_intent"] or "").strip()
         self.save()
         return profile
 

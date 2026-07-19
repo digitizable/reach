@@ -321,12 +321,14 @@ _ELECTRON_EXES = frozenset(
         "discord",
         "element-desktop",
         "signal-desktop",
-        "spotify",
         "obsidian",
         "typora",
         "gitkraken",
     }
 )
+# Spotify is CEF-based but uses XDG ~/.config/spotify for login (not Chromium
+# user-data alone). Handled separately so exclude can seed autologin prefs.
+_SPOTIFY_EXES = frozenset({"spotify", "spotify-client"})
 
 
 def _exe_basename(argv: list[str]) -> str:
@@ -510,8 +512,8 @@ _SPECTRE_PROFILE_META = ".spectre-profile-source"
 # DoH for exclude Firefox: TRR-only via Cloudflare IP URI so bootstrap never
 # hits ISP/LAN resolvers (and never Mullvad 10.64.0.1 on the host).
 _EXCLUDE_DOH_URI = "https://1.1.1.1/dns-query"
-_EXCLUDE_DOH_MARKER_BEGIN = "// BEGIN spectre-desktop exclude DoH"
-_EXCLUDE_DOH_MARKER_END = "// END spectre-desktop exclude DoH"
+_EXCLUDE_DOH_MARKER_BEGIN = "// BEGIN reach exclude DoH"
+_EXCLUDE_DOH_MARKER_END = "// END reach exclude DoH"
 _EXCLUDE_DOH_USER_JS_BLOCK = f"""
 {_EXCLUDE_DOH_MARKER_BEGIN}
 // Clearnet exclude: force DNS over HTTPS (not ISP / not Mullvad tunnel DNS).
@@ -616,6 +618,158 @@ def _mozilla_copy_ignore(directory: str, names: list[str]) -> set[str]:
     return skip
 
 
+def resolve_spotify_config_dir() -> Path | None:
+    """Return the user's real Spotify config dir (login prefs), if present.
+
+    Prefer the normal XDG/snap/flatpak locations under the account home — not
+    Spectre's private instance tree.
+    """
+    home = Path.home()
+    candidates: list[Path] = [
+        home / ".config" / "spotify",
+        home / "snap" / "spotify" / "common" / ".config" / "spotify",
+        home / ".var" / "app" / "com.spotify.Client" / "config" / "spotify",
+    ]
+    xdg = (os.environ.get("XDG_CONFIG_HOME") or "").strip()
+    if xdg:
+        # Only trust session XDG when it is not already a Spectre instance tree.
+        p = Path(xdg)
+        if "spectre" not in p.parts or "instances" not in p.parts:
+            cand = p / "spotify"
+            if cand not in candidates:
+                candidates.insert(0, cand)
+
+    # Prefer a dir that already has prefs (autologin lives there).
+    with_prefs: Path | None = None
+    any_dir: Path | None = None
+    for c in candidates:
+        if not c.is_dir():
+            continue
+        if any_dir is None:
+            any_dir = c
+        if (c / "prefs").is_file():
+            with_prefs = c
+            break
+    return with_prefs or any_dir
+
+
+_SPOTIFY_COPY_IGNORE_NAMES = frozenset(
+    {
+        "SingletonLock",
+        "SingletonCookie",
+        "SingletonSocket",
+        "lock",
+        ".lock",
+        "Running",
+        "LOCK",
+    }
+)
+
+
+def ensure_spectre_spotify_config(
+    app: RoutedApp,
+    *,
+    tag: str = "exclude",
+) -> str:
+    """Ensure Spectre-owned Spotify config exists (copy of the user's login).
+
+    Spotify stores autologin under ``~/.config/spotify`` (prefs + Users/).
+    Exclude launches use a private XDG tree so a clearnet instance can run
+    beside the menu copy — without seeding, that tree is empty and forces
+    re-login. First launch copies once; later launches reuse the copy.
+    Never modifies the real ``~/.config/spotify``.
+    """
+    inst = _instance_dir(app, tag=tag)
+    dest = inst / "config" / "spotify"
+    meta = dest / _SPECTRE_PROFILE_META
+    source = resolve_spotify_config_dir()
+
+    if dest.is_dir() and meta.is_file():
+        try:
+            src_recorded = meta.read_text(encoding="utf-8").strip().splitlines()[0]
+        except OSError:
+            src_recorded = ""
+        if src_recorded and not src_recorded.startswith("#"):
+            return f"Spectre Spotify config (from {Path(src_recorded).name})"
+        return "Spectre Spotify config copy"
+
+    # User already signed into the clearnet copy — keep it, do not clobber.
+    if dest.is_dir() and (dest / "prefs").is_file() and not meta.is_file():
+        try:
+            meta.write_text(
+                "# existing clearnet Spotify prefs; not overwritten\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        return "Spectre Spotify config (existing)"
+
+    dest.mkdir(parents=True, exist_ok=True)
+
+    if source is None or not source.is_dir():
+        try:
+            meta.write_text("# no source Spotify config found\n", encoding="utf-8")
+        except OSError:
+            pass
+        return "Spectre Spotify config (empty — no source found)"
+
+    # Refuse to treat our own instance dir as the source.
+    try:
+        if source.resolve() == dest.resolve():
+            meta.write_text("# source is instance dir\n", encoding="utf-8")
+            return "Spectre Spotify config (empty — no external source)"
+    except OSError:
+        pass
+
+    try:
+        for child in dest.iterdir():
+            if child.name == _SPECTRE_PROFILE_META:
+                continue
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                try:
+                    child.unlink()
+                except OSError:
+                    pass
+
+        for item in source.iterdir():
+            if item.name in _SPOTIFY_COPY_IGNORE_NAMES:
+                continue
+            if item.name == _SPECTRE_PROFILE_META:
+                continue
+            target = dest / item.name
+            if item.is_dir():
+                shutil.copytree(
+                    item,
+                    target,
+                    symlinks=True,
+                    ignore=lambda _d, names: {
+                        n for n in names if n in _SPOTIFY_COPY_IGNORE_NAMES
+                    },
+                    dirs_exist_ok=True,
+                )
+            else:
+                try:
+                    shutil.copy2(item, target, follow_symlinks=False)
+                except OSError:
+                    try:
+                        shutil.copy2(item, target)
+                    except OSError:
+                        pass
+
+        meta.write_text(
+            f"{source}\n"
+            f"# Reach clearnet Spotify config copy\n"
+            f"# Login/prefs only — cache stays private under the instance\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        return f"Spectre Spotify config (copy incomplete: {exc})"
+
+    return f"Spectre Spotify config (copied from {source})"
+
+
 def ensure_spectre_mozilla_profile(
     app: RoutedApp,
     exe: str,
@@ -624,7 +778,7 @@ def ensure_spectre_mozilla_profile(
 ) -> tuple[Path, str]:
     """Ensure a Spectre-owned Mozilla profile exists (copy of the user's default).
 
-    - Lives only under Spectre Desktop user data (per user, not shipped defaults).
+    - Lives only under Reach user data (per user, not shipped defaults).
     - Never changes Firefox's default profile / profiles.ini.
     - First launch copies once; later launches reuse the Spectre copy so the
       clearnet instance can run beside a normal Firefox on the real profile.
@@ -699,7 +853,7 @@ def ensure_spectre_mozilla_profile(
 
         meta.write_text(
             f"{source}\n"
-            f"# Spectre Desktop clearnet profile copy\n"
+            f"# Reach clearnet profile copy\n"
             f"# Not registered as Firefox's default — only used with --profile\n",
             encoding="utf-8",
         )
@@ -759,6 +913,23 @@ def argv_for_separate_instance(
             note = "requested profile"
         out = [out[0], *flags, *out[1:]]
         return out, note, False
+
+    if exe in _SPOTIFY_EXES:
+        # Spotify login lives in XDG config (~/.config/spotify), not in a
+        # Chromium user-data dir. Seed a Spectre-owned copy so clearnet
+        # exclude stays logged in; private XDG keeps locks off the menu copy.
+        note = ensure_spectre_spotify_config(app, tag=tag)
+        flags: list[str] = []
+        # Spotify's multi-client switch (documented --mu).
+        if not _argv_has_prefix(out, "--mu"):
+            flags.append(f"--mu=spectre-{tag}")
+        # CEF user-data (if honored) stays private so two CEF trees do not clash.
+        udd = inst / "user-data"
+        udd.mkdir(parents=True, exist_ok=True)
+        if not _argv_has_prefix(out, "--user-data-dir"):
+            flags.append(f"--user-data-dir={udd}")
+        out = [out[0], *flags, *out[1:]]
+        return out, note, True  # private_xdg → inst/config/spotify
 
     if exe in _CHROMIUM_EXES or exe in _ELECTRON_EXES:
         udd = inst / "user-data"

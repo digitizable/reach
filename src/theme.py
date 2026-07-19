@@ -28,7 +28,7 @@ def _load_css() -> None:
     try:
         provider.load_from_path(str(path))
     except GLib.Error as exc:  # type: ignore[attr-defined]
-        print(f"[spectre-desktop] CSS load failed ({path}): {exc}", file=sys.stderr)
+        print(f"[reach] CSS load failed ({path}): {exc}", file=sys.stderr)
         return
 
     display = Gdk.Display.get_default()

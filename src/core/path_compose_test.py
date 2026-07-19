@@ -20,7 +20,7 @@ def _reality() -> Backend:
     return Backend(
         id="r1",
         kind="REALITY",
-        name="Hetzner REALITY",
+        name="Outside REALITY",
         reality_server="1.2.3.4",
         reality_uuid="u",
         reality_public_key="k",

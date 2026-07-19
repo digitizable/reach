@@ -11,6 +11,8 @@ class NavItem:
     title: str
     icon_name: str
     tooltip: str
+    """Optional asset under data/assets/ (e.g. flag SVG) instead of icon_name."""
+    icon_asset: str | None = None
 
 
 NAV_ITEMS: tuple[NavItem, ...] = (
@@ -37,6 +39,13 @@ NAV_ITEMS: tuple[NavItem, ...] = (
         title="Exclude apps",
         icon_name="view-app-grid-symbolic",
         tooltip="Run apps on clearnet (exclude from Spectre / tunnel)",
+    ),
+    NavItem(
+        id="china",
+        title="Reach",
+        icon_name="network-workgroup-symbolic",
+        tooltip="Territory ingress — inbound host or Inverse Snowflake (China default)",
+        icon_asset="globe.svg",
     ),
     NavItem(
         id="settings",
