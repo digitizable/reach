@@ -1,5 +1,7 @@
 # Spectre Desktop
 
+> **Draft software — not ready for use.**
+
 <p align="center">
   <img src="data/assets/banner-readme.png" alt="Spectre Desktop" width="980"/>
 </p>
@@ -8,9 +10,22 @@ GTK 4 + libadwaita frontend for [Spectre](https://github.com/digitizable/spectre
 
 Linux only for now. macOS/Windows would be separate frontends against the same core API.
 
-## Status (0.3.13)
+> [!WARNING]
+> **Draft / not ready for use**
+>
+> Spectre Desktop is a **draft program**. It is unfinished, lightly tested, and **surely contains bugs** — including ones that can misdrive the core, break networking, or mishandle privileges. **Do not install or run it** expecting a reliable or safe privacy tool. Use it only if you are experimenting and can recover a broken network stack yourself.
+>
+> The same applies to the companion core, [Spectre](https://github.com/digitizable/spectre) (`spectred`): both halves of the stack are drafts until explicitly declared otherwise.
+>
+> **Disclaimer.** This UI reflects one person’s understanding of networking, privacy tooling, and programming. By using it you are relying on that competence, not on a reviewed or community-maintained security design. **Do not use Spectre Desktop (or Spectre) for real privacy needs until the project is community-driven** with independent review, shared ownership, and a broader set of maintainers.
+>
+> **AI was used in the development of Spectre Desktop.** Large language models assisted with design, implementation, and documentation. Generated code can be subtly wrong, insecure, or incomplete; treat the app and everything it configures in the core as untrusted experimental software.
+>
+> A future release created **solely by the author (without AI assistance)** is planned; until that (or community ownership) exists, assume the present tree is exploratory **draft** code.
 
-Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, and core handoff for kill switch + system routing.
+## Status (0.3.13) — draft
+
+Official **Mullvad VPN** integration, **tray applet** (lock icons, right-click Connect / Disconnect / Quit), routing modes, connect preflight, exclude-list split tunnel (clearnet netns), update checks, and core handoff for kill switch + system routing. Feature list describes intent, **not** production readiness.
 
 **0.3.13:** Exclude prefers clearnet-run when only helpers have passwordless sudo (not generic `sudo true`); Spectre’s exclude Firefox profile forces DNS over HTTPS (Cloudflare) so clearnet DNS is not ISP/Mullvad. **0.3.12:** responsive Connect/Disconnect, tray quit/SNI fixes, open-lock icon, progress bar hides when done. **0.3.11:** clearnet Check/Repair. Pair with **clearnet-netns** from spectred ≥ 0.3.12.
 
