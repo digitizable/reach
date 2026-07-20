@@ -410,23 +410,27 @@ class HomePage(Gtk.Box):
         host = self._mv_hosts[hidx] if 0 <= hidx < len(self._mv_hosts) else "any"
 
         def worker() -> None:
+            # Constraints only — never auto-connect (see set_location).
             ok, msg = mv.set_location(
                 country,
                 None if city in ("", "any") else city,
                 None if host in ("", "any") else host,
+                disconnect_if_connected=True,
             )
             st = mv.probe()
 
             def done() -> bool:
                 if ok:
-                    self._mv_status.set_text(st.summary or msg)
+                    # Prefer explicit “selected” copy over Connected status.
+                    status = msg if "selected" in msg.lower() or not st.connected else st.summary
+                    self._mv_status.set_text(status or msg)
                     if self._mv_map is not None:
                         self._mv_map.set_active(
                             country if country != "any" else "",
                             city if city not in ("", "any") else "",
                         )
                     if self._on_toast:
-                        self._on_toast(msg if len(msg) < 80 else st.summary)
+                        self._on_toast(msg if len(msg) < 100 else "Relay selected")
                 else:
                     self._mv_status.set_text(msg)
                     if self._on_toast:

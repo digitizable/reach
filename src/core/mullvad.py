@@ -179,16 +179,30 @@ def set_location(
     country: str,
     city: str | None = None,
     hostname: str | None = None,
+    *,
+    disconnect_if_connected: bool = True,
 ) -> tuple[bool, str]:
-    """Set Mullvad relay location via CLI. country may be 'any'."""
+    """Set Mullvad relay constraints only — does not connect.
+
+    Changing location while Mullvad is already connected makes the daemon
+    reconnect to the new relay. By default we disconnect afterward so
+    selection never auto-connects; the user must press Connect.
+    """
     if not cli_path():
         return False, "Mullvad CLI not installed"
     country = (country or "any").strip().lower()
     city = (city or "").strip().lower() or None
     hostname = (hostname or "").strip().lower() or None
+
+    # Snapshot tunnel state before the change (location change can reconnect).
+    was_connected = False
+    try:
+        was_connected = probe().connected
+    except Exception:
+        pass
+
     args: list[str] = ["relay", "set", "location"]
     if hostname and hostname not in ("any", ""):
-        # Hostname alone is accepted
         args.append(hostname)
     elif country in ("", "any"):
         args.append("any")
@@ -199,7 +213,19 @@ def set_location(
     code, out = _run(*args, timeout=12.0)
     if code != 0:
         return False, out or "mullvad relay set location failed"
-    return True, out or f"Relay location → {' '.join(args[3:])}"
+
+    where = " ".join(args[3:])
+    # Always leave the tunnel down after a pure location pick unless asked not to.
+    if disconnect_if_connected:
+        try:
+            st = probe()
+            if was_connected or st.connected:
+                disconnect()
+        except Exception:
+            pass
+        return True, f"Relay selected · {where} · press Connect when ready"
+
+    return True, out or f"Relay location → {where}"
 
 
 def connect() -> tuple[bool, str]:

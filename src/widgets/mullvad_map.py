@@ -325,10 +325,18 @@ class MullvadMap(Gtk.Box):
         if city is None:
             return
         self._busy = True
-        self._caption.set_text(f"Setting · {city.city_name}, {city.country_name}…")
+        self._caption.set_text(
+            f"Selecting · {city.city_name}, {city.country_name}…"
+        )
 
         def worker() -> None:
-            ok, msg = set_location(city.country_code, city.city_code, None)
+            # Location only — do not leave Mullvad connected.
+            ok, msg = set_location(
+                city.country_code,
+                city.city_code,
+                None,
+                disconnect_if_connected=True,
+            )
 
             def done() -> bool:
                 self._busy = False
@@ -340,7 +348,7 @@ class MullvadMap(Gtk.Box):
                         )
                     if self._on_toast:
                         self._on_toast(
-                            f"Mullvad · {city.city_name}, {city.country_name}"
+                            f"Selected {city.city_name} · press Connect"
                         )
                 else:
                     self._update_caption()
