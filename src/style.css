@@ -296,8 +296,8 @@ button.nav-btn.nav-btn-active {
 }
 
 .path-node {
-  min-width: 64px;
-  padding: 0;
+  min-width: 0;
+  padding: 0 4px;
   background: transparent;
   border: none;
 }
@@ -326,6 +326,7 @@ button.nav-btn.nav-btn-active {
   font-weight: 550;
   color: #8a8a8a;
   letter-spacing: 0.01em;
+  line-height: 1.25;
 }
 
 .path-live .path-node-label {

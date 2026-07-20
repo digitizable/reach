@@ -528,7 +528,9 @@ class ChinaIngressPage(Gtk.Box):
     def _path_chip(self, text: str) -> Gtk.Label:
         lab = Gtk.Label(label=text, justify=Gtk.Justification.CENTER)
         lab.add_css_class("china-path-chip")
-        lab.set_width_chars(8)
+        lab.set_wrap(True)
+        lab.set_xalign(0.5)
+        # Full labels (e.g. "Mullvad VPN", territory names) — do not clip
         return lab
 
     def _path_arrow(self) -> Gtk.Label:

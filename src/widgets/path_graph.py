@@ -11,8 +11,8 @@ from app_config import project_root
 _ICON_SIZE = 22
 _WELL_SIZE = 44
 _ARROW_WIDTH = 28
-_NODE_MIN_WIDTH = 64
-_ROW_SPACING = 8
+_NODE_MIN_WIDTH = 72
+_ROW_SPACING = 10
 
 # Custom brand marks (not recolored by CSS).
 _ASSET_LOGOS: tuple[tuple[tuple[str, ...], str, str], ...] = (
@@ -189,14 +189,15 @@ def _hop_node(
     lab.set_halign(Gtk.Align.CENTER)
     lab.set_justify(Gtk.Justification.CENTER)
     lab.set_xalign(0.5)
+    # Full hop names (e.g. "Mullvad VPN") — never truncate with ellipsis
+    lab.set_wrap(True)
     try:
         from gi.repository import Pango
 
-        lab.set_ellipsize(Pango.EllipsizeMode.END)
+        lab.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        lab.set_ellipsize(Pango.EllipsizeMode.NONE)
     except Exception:
         pass
-    lab.set_max_width_chars(10)
-    lab.set_width_chars(8)
     col.append(lab)
 
     tag = (sublabel or "").strip()
