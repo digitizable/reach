@@ -62,19 +62,20 @@ headerbar.top-header {
 .nav-btn.nav-btn-active,
 button.nav-btn:checked,
 button.nav-btn.nav-btn-active {
-  background-color: #161616;
-  color: #f0f0f0;
-  box-shadow: inset 2px 0 0 0 #e8e8e8;
+  background-color: #1a1a1a;
+  color: #d8d8d8;
+  box-shadow: none;
+  border: none;
 }
 
 .nav-btn:focus {
   outline: none;
-  box-shadow: inset 2px 0 0 0 #666666;
+  box-shadow: none;
 }
 
 .nav-btn:checked:focus,
 .nav-btn.nav-btn-active:focus {
-  box-shadow: inset 2px 0 0 0 #e8e8e8;
+  box-shadow: none;
 }
 
 .nav-btn image {
