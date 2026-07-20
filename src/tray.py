@@ -187,10 +187,10 @@ def _png_to_pixmap(path: str, size: int = 32) -> list[tuple[int, int, bytes]]:
 
 def tooltip_for(state: CoreState, detail: str = "") -> tuple[str, str]:
     titles = {
-        CoreState.CONNECTED: "Spectre · Protected",
-        CoreState.CONNECTING: "Spectre · Connecting…",
-        CoreState.DISCONNECTED: "Spectre · Not connected",
-        CoreState.UNAVAILABLE: "Spectre · Core offline",
+        CoreState.CONNECTED: "Reach · Protected",
+        CoreState.CONNECTING: "Reach · Connecting…",
+        CoreState.DISCONNECTED: "Reach · Not connected",
+        CoreState.UNAVAILABLE: "Reach · Core offline",
     }
     return titles.get(state, APPLICATION_NAME), (detail or "").strip()
 
