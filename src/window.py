@@ -20,26 +20,41 @@ from services import Services
 
 
 class ReachWindow(Adw.ApplicationWindow):
+    # Soft minimums; maximum always follows the active monitor.
+    _MIN_W = 560
+    _MIN_H = 480
+    _DEF_W = 720
+    _DEF_H = 540
+    # Inset from monitor edges so chrome/panels stay visible.
+    _SCREEN_MARGIN = 48
+
     def __init__(self, app: Adw.Application, *, services: Services) -> None:
         super().__init__(application=app, title=APPLICATION_NAME)
         self.add_css_class("reach-window")
-        # Compact two-pane shell (prefer width over height).
-        _min_w, _min_h = 560, 480
-        _def_w, _def_h = 720, 540
-        self.set_size_request(_min_w, _min_h)
+        self.set_size_request(self._MIN_W, self._MIN_H)
         self.set_resizable(True)
         self.set_icon_name(APPLICATION_ICON)
 
         self._services = services
+        self._max_w, self._max_h = self._detect_screen_max()
+        self._compute_size_connected = False
+
         w = int(getattr(services.config, "window_width", 0) or 0)
         h = int(getattr(services.config, "window_height", 0) or 0)
         # Drop oversized heights from earlier defaults (680–860 era).
         if h >= 680:
-            h = _def_h
-        if w >= 560 and h >= _min_h:
-            self.set_default_size(w, min(h, 620))
+            h = self._DEF_H
+        # Prefer saved size when sensible; always clamp to this screen.
+        if w >= self._MIN_W and h >= self._MIN_H:
+            self.set_default_size(
+                self._clamp_w(w),
+                self._clamp_h(h),
+            )
         else:
-            self.set_default_size(_def_w, _def_h)
+            self.set_default_size(
+                self._clamp_w(self._DEF_W),
+                self._clamp_h(self._DEF_H),
+            )
         self._nav_buttons: dict[str, Gtk.ToggleButton] = {}
         self._page_stack: Gtk.Stack | None = None
         self._toast_overlay: Adw.ToastOverlay
@@ -104,9 +119,114 @@ class ReachWindow(Adw.ApplicationWindow):
         self.connect("close-request", self._on_close_request)
         self.connect("map", self._on_map)
         self.connect("unmap", self._on_unmap)
+        self.connect("notify::default-width", self._on_default_size_notify)
+        self.connect("notify::default-height", self._on_default_size_notify)
 
         # First paint → load assets in background → build UI
         GLib.idle_add(self._start_bootstrap)
+
+    # ── Screen-aware size limits ──────────────────────────────────
+
+    def _detect_screen_max(self) -> tuple[int, int]:
+        """Largest useful window size on the current (or primary) monitor."""
+        display = Gdk.Display.get_default()
+        if display is None:
+            return 1920 - self._SCREEN_MARGIN, 1080 - self._SCREEN_MARGIN
+
+        monitor = None
+        try:
+            surface = self.get_surface()
+            if surface is not None:
+                monitor = display.get_monitor_at_surface(surface)
+        except Exception:
+            monitor = None
+
+        if monitor is None:
+            try:
+                monitors = display.get_monitors()
+                if monitors.get_n_items() > 0:
+                    monitor = monitors.get_item(0)
+            except Exception:
+                monitor = None
+
+        if monitor is None:
+            return 1920 - self._SCREEN_MARGIN, 1080 - self._SCREEN_MARGIN
+
+        try:
+            geo = monitor.get_geometry()
+            # Prefer logical pixels (geometry is already in application pixels
+            # on most GTK4 setups; scale_factor is for hardware pixels).
+            mw = int(geo.width) - self._SCREEN_MARGIN
+            mh = int(geo.height) - self._SCREEN_MARGIN
+        except Exception:
+            return 1920 - self._SCREEN_MARGIN, 1080 - self._SCREEN_MARGIN
+
+        # Never below our soft minimums.
+        return max(self._MIN_W, mw), max(self._MIN_H, mh)
+
+    def _clamp_w(self, w: int) -> int:
+        return max(self._MIN_W, min(int(w), self._max_w))
+
+    def _clamp_h(self, h: int) -> int:
+        return max(self._MIN_H, min(int(h), self._max_h))
+
+    def _bind_toplevel_size_limits(self) -> None:
+        """Tell the compositor min/max size from the active monitor."""
+        if self._compute_size_connected:
+            return
+        surface = self.get_surface()
+        if surface is None:
+            return
+        # Refresh max for the monitor this window is actually on.
+        self._max_w, self._max_h = self._detect_screen_max()
+        try:
+            if not isinstance(surface, Gdk.Toplevel):
+                return
+            surface.connect("compute-size", self._on_toplevel_compute_size)
+            self._compute_size_connected = True
+        except Exception:
+            pass
+
+    def _on_toplevel_compute_size(self, _toplevel, size) -> None:
+        """Gdk.ToplevelSize: enforce min size; max from screen when available."""
+        try:
+            size.set_min_size(self._MIN_W, self._MIN_H)
+        except Exception:
+            pass
+        # Prefer explicit max when GI exposes it; else bounds already track display.
+        try:
+            setter = getattr(size, "set_max_size", None)
+            if callable(setter):
+                setter(self._max_w, self._max_h)
+                return
+        except Exception:
+            pass
+        # Fallback: if requested size would exceed screen, some WMs still
+        # honor set_size as a hint for the configure.
+        try:
+            bounds = size.get_bounds()
+            # bounds may be a tuple-like (width, height) or result object
+            if hasattr(bounds, "bounds_width"):
+                bw, bh = int(bounds.bounds_width), int(bounds.bounds_height)
+            elif isinstance(bounds, (tuple, list)) and len(bounds) >= 2:
+                bw, bh = int(bounds[0]), int(bounds[1])
+            else:
+                bw, bh = self._max_w, self._max_h
+            # Keep our margin under the compositor bounds.
+            self._max_w = max(self._MIN_W, min(self._max_w, bw))
+            self._max_h = max(self._MIN_H, min(self._max_h, bh))
+        except Exception:
+            pass
+
+    def _on_default_size_notify(self, *_a) -> None:
+        """Keep default size (and restore) within the screen max."""
+        try:
+            w, h = self.get_default_size()
+            cw, ch = self._clamp_w(w), self._clamp_h(h)
+            if (cw, ch) != (w, h):
+                self.set_default_size(cw, ch)
+        except Exception:
+            pass
 
     def _build_loading_screen(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
@@ -196,6 +316,24 @@ class ReachWindow(Adw.ApplicationWindow):
         self._start_status_poll()
         # Immediate refresh when the window is shown again
         GLib.idle_add(self._poll_core_status)
+        # Surface exists now — bind min/max to this monitor.
+        GLib.idle_add(self._bind_toplevel_size_limits)
+        # Re-detect if the window moved to another display later.
+        GLib.idle_add(self._refresh_screen_max_and_clamp)
+
+    def _refresh_screen_max_and_clamp(self) -> bool:
+        self._max_w, self._max_h = self._detect_screen_max()
+        try:
+            w = self.get_width()
+            h = self.get_height()
+            if w > 1 and h > 1:
+                cw, ch = self._clamp_w(w), self._clamp_h(h)
+                if cw < w or ch < h:
+                    # Shrink if current size exceeds the new monitor max.
+                    self.set_default_size(cw, ch)
+        except Exception:
+            pass
+        return False
 
     def _on_unmap(self, *_a) -> None:
         # Keep polling while closed-to-tray so reopen is fresh; only stop on destroy.
@@ -300,6 +438,8 @@ class ReachWindow(Adw.ApplicationWindow):
             h = int(self.get_height())
             if w < 400 or h < 400:
                 return
+            # Store clamped so restore never exceeds this screen next launch.
+            w, h = self._clamp_w(w), self._clamp_h(h)
             cfg = self._services.config
             if cfg.window_width == w and cfg.window_height == h:
                 return
