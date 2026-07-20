@@ -1347,17 +1347,23 @@ list.boxed-list > row {
 }
 
 .mullvad-map {
-  margin: 4px 0 8px;
-  padding: 8px;
-  background-color: #0c0c10;
-  border: 1px solid #262628;
+  margin: 4px 0 10px;
+  padding: 0;
+  background-color: transparent;
+}
+
+.mullvad-map-viewport {
+  min-height: 160px;
   border-radius: 12px;
+  background-color: #0c0c10;
 }
 
 .mullvad-map-caption {
   font-size: 10px;
-  color: #52525b;
+  color: #71717a;
   letter-spacing: 0.02em;
+  margin-top: 2px;
+  padding: 0 4px;
 }
 
 .home-card {
