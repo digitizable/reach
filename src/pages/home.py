@@ -252,7 +252,17 @@ class HomePage(Gtk.Box):
 
     # ── Mullvad server picker (open-source CLI) ───────────────────
 
+    def _mv_begin_suppress(self) -> None:
+        self._mv_suppress += 1
+
+    def _mv_end_suppress(self) -> None:
+        self._mv_suppress = max(0, self._mv_suppress - 1)
+
+    def _mv_is_suppressed(self) -> bool:
+        return self._mv_suppress > 0 or not self._mv_ready
+
     def _init_mullvad_picker(self) -> bool:
+        """Sync dropdowns to current Mullvad state — never set_location/disconnect."""
         from core import mullvad as mv
 
         if not mv.cli_path():
@@ -267,7 +277,7 @@ class HomePage(Gtk.Box):
             self._mv_box.set_visible(False)
             return False
 
-        self._mv_block = True
+        self._mv_begin_suppress()
         try:
             labels = ["Any country"]
             codes = ["any"]
@@ -278,7 +288,6 @@ class HomePage(Gtk.Box):
             self._mv_country.set_model(Gtk.StringList.new(labels))
 
             country, city, host = mv.get_location_constraint()
-            # Select country
             idx = 0
             if country and country in codes:
                 idx = codes.index(country)
@@ -287,18 +296,24 @@ class HomePage(Gtk.Box):
             st = mv.probe()
             self._mv_status.set_text(st.summary or "")
             self._mv_box.set_visible(True)
-            self._mv_ready = True
             if self._mv_map is not None:
-                self._mv_map.set_active(country, city)
+                self._mv_map.set_active(country or "", city or "")
+            # Defer ready until after GTK drains selection notify handlers
+            # so startup sync never calls set_location / disconnect.
         finally:
-            self._mv_block = False
+            self._mv_end_suppress()
+        GLib.idle_add(self._mv_mark_ready)
+        return False
+
+    def _mv_mark_ready(self) -> bool:
+        self._mv_ready = True
         return False
 
     def _on_map_location(self, country: str, city: str, city_name: str) -> None:
-        """Map click — refresh pickers to match Mullvad selection."""
+        """Map click already set location — only sync pickers (no second apply)."""
         if not self._mv_ready:
             return
-        self._mv_block = True
+        self._mv_begin_suppress()
         try:
             if country in self._mv_country_codes:
                 self._mv_country.set_selected(self._mv_country_codes.index(country))
@@ -310,7 +325,7 @@ class HomePage(Gtk.Box):
                 st.summary or f"{city_name} ({country}/{city})"
             )
         finally:
-            self._mv_block = False
+            self._mv_end_suppress()
 
     def _reload_mv_cities(
         self, *, select_city: str = "", select_host: str = ""
@@ -331,7 +346,7 @@ class HomePage(Gtk.Box):
                 labels.append(f"{name} ({code})")
                 codes.append(code)
         self._mv_city_codes = codes
-        self._mv_block = True
+        self._mv_begin_suppress()
         try:
             self._mv_city.set_model(Gtk.StringList.new(labels))
             csel = 0
@@ -340,7 +355,7 @@ class HomePage(Gtk.Box):
             self._mv_city.set_selected(csel)
             self._reload_mv_hosts(select_host=select_host)
         finally:
-            self._mv_block = False
+            self._mv_end_suppress()
 
     def _reload_mv_hosts(self, *, select_host: str = "") -> None:
         from core import mullvad as mv
@@ -365,7 +380,7 @@ class HomePage(Gtk.Box):
                 labels.append(h)
                 hosts.append(h)
         self._mv_hosts = hosts
-        self._mv_block = True
+        self._mv_begin_suppress()
         try:
             self._mv_host.set_model(Gtk.StringList.new(labels))
             hsel = 0
@@ -373,22 +388,22 @@ class HomePage(Gtk.Box):
                 hsel = hosts.index(select_host)
             self._mv_host.set_selected(hsel)
         finally:
-            self._mv_block = False
+            self._mv_end_suppress()
 
     def _on_mv_country(self, *_a) -> None:
-        if self._mv_block or not self._mv_ready:
+        if self._mv_is_suppressed():
             return
         self._reload_mv_cities()
         self._apply_mv_location()
 
     def _on_mv_city(self, *_a) -> None:
-        if self._mv_block or not self._mv_ready:
+        if self._mv_is_suppressed():
             return
         self._reload_mv_hosts()
         self._apply_mv_location()
 
     def _on_mv_host(self, *_a) -> None:
-        if self._mv_block or not self._mv_ready:
+        if self._mv_is_suppressed():
             return
         self._apply_mv_location()
 
