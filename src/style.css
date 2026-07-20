@@ -447,19 +447,22 @@ button.nav-btn.nav-btn-active {
 }
 
 button.suggested-action {
-  background-color: #e4e4e4;
-  color: #0d0d0d;
+  background-color: #1c1c1c;
+  color: #e8e8e8;
   border-radius: 8px;
-  border: none;
+  border: 1px solid #3a3a3a;
 }
 
 button.suggested-action:hover {
-  background-color: #f0f0f0;
+  background-color: #242424;
+  border-color: #4a4a4a;
+  color: #f0f0f0;
 }
 
 button.suggested-action:disabled {
-  background-color: #252525;
-  color: #707070;
+  background-color: #161616;
+  color: #555555;
+  border-color: #2a2a2a;
 }
 
 button.flat {
@@ -691,14 +694,14 @@ toast {
 .home-next {
   font-size: 11px;
   font-weight: 500;
-  color: #9aa8c0;
+  color: #9a9a9a;
   min-height: 26px;
   padding: 0 8px;
   border-radius: 6px;
 }
 
 .home-next:hover {
-  color: #c8d4ee;
+  color: #d0d0d0;
   background-color: #1a1a1a;
 }
 
@@ -730,7 +733,7 @@ toast {
 
 .tool-card-when {
   font-size: 11px;
-  color: #a8b4c8;
+  color: #9a9a9a;
   line-height: 1.4;
 }
 
@@ -795,7 +798,7 @@ toast {
 
 .detail-ready {
   font-size: 12px;
-  color: #a8b4c8;
+  color: #9a9a9a;
   line-height: 1.4;
 }
 
@@ -984,17 +987,17 @@ button.nav-btn.nav-btn-active {
 .home-next {
   font-size: 12px;
   font-weight: 550;
-  color: #93a4c4;
+  color: #a1a1aa;
   min-height: 28px;
   padding: 4px 12px;
   border-radius: 999px;
-  background-color: #1a1e28;
-  border: 1px solid #2a3344;
+  background-color: #1a1a1c;
+  border: 1px solid #2e2e32;
 }
 
 .home-next:hover {
-  color: #c7d4ee;
-  background-color: #222836;
+  color: #e4e4e7;
+  background-color: #222224;
 }
 
 .home-cta {
@@ -1007,12 +1010,15 @@ button.nav-btn.nav-btn-active {
 }
 
 button.suggested-action.home-cta {
-  background-color: #f4f4f5;
-  color: #09090b;
+  background-color: #1c1c1c;
+  color: #f0f0f0;
+  border: 1px solid #404040;
 }
 
 button.suggested-action.home-cta:hover {
-  background-color: #ffffff;
+  background-color: #262626;
+  border-color: #555555;
+  color: #ffffff;
 }
 
 /* ── Path graph ─────────────────────────────────────── */
@@ -1183,9 +1189,9 @@ button.door-card:hover {
 }
 
 button.door-card.door-card-active {
-  background-color: #1a1e28;
-  border-color: #4a5a78;
-  box-shadow: inset 0 0 0 1px #3a4a66;
+  background-color: #1c1c1e;
+  border-color: #5a5a5a;
+  box-shadow: inset 0 0 0 1px #3a3a3a;
 }
 
 .door-card-title {
@@ -1209,7 +1215,7 @@ button.door-card.door-card-active {
 }
 
 .door-card-active .door-card-icon {
-  color: #c7d4ee;
+  color: #e4e4e7;
 }
 
 .door-card-chev {
@@ -1218,7 +1224,7 @@ button.door-card.door-card-active {
 
 .door-pkg-btn {
   font-size: 11px;
-  color: #93a4c4;
+  color: #9a9a9a;
   margin-top: 2px;
 }
 
@@ -1303,4 +1309,22 @@ list.boxed-list > row {
   padding: 12px 14px;
   background-color: #161618;
   border: 1px solid #2e2e32;
+}
+
+/* No color accents on buttons — monochrome only */
+button.suggested-action,
+button.suggested-action:checked,
+button.destructive-action {
+  /* keep destructive distinguishable via border only if present */
+}
+
+button.destructive-action {
+  background-color: #1c1c1c;
+  color: #e8e8e8;
+  border: 1px solid #5a4040;
+}
+
+button.destructive-action:hover {
+  background-color: #242020;
+  color: #f0f0f0;
 }
