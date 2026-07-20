@@ -231,7 +231,8 @@ class HomePage(Gtk.Box):
         right.append(self._mv_box)
         split.append(right)
 
-        self._mv_block = False
+        # Nested suppress: UI sync must never call set_location/disconnect.
+        self._mv_suppress = 0
         self._mv_country_codes: list[str] = []
         self._mv_city_codes: list[str] = []
         self._mv_hosts: list[str] = []
