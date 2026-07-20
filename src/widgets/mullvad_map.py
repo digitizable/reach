@@ -93,8 +93,8 @@ class MullvadMap(Gtk.Box):
         if fill:
             self._area.set_vexpand(True)
             self._area.set_hexpand(True)
-            # Prefer a tall viewport when filling a pane
-            self._area.set_content_height(max(self._height, 280))
+            # Fill remaining pane height without forcing a tall minimum
+            self._area.set_content_height(max(140, self._height))
         else:
             self._area.set_content_height(self._height)
             self._area.set_hexpand(True)

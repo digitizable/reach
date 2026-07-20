@@ -1353,7 +1353,7 @@ list.boxed-list > row {
 }
 
 .mullvad-map-viewport {
-  min-height: 200px;
+  min-height: 140px;
   border-radius: 14px;
   background-color: #0e1218;
 }

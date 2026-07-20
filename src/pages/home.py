@@ -50,14 +50,14 @@ class HomePage(Gtk.Box):
         left.set_hexpand(False)
         left.set_vexpand(True)
 
-        left_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        left_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         left_inner.add_css_class("home-pane-left-inner")
         left_inner.set_valign(Gtk.Align.CENTER)
         left_inner.set_halign(Gtk.Align.CENTER)
         left_inner.set_hexpand(True)
 
         # Status hero
-        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         hero.add_css_class("home-hero")
         hero.set_halign(Gtk.Align.CENTER)
 
@@ -168,7 +168,7 @@ class HomePage(Gtk.Box):
             from widgets.mullvad_map import MullvadMap
 
             self._mv_map = MullvadMap(
-                height=320,
+                height=200,
                 interactive=True,
                 on_toast=self._on_toast,
                 on_location=self._on_map_location,

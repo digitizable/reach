@@ -1353,7 +1353,7 @@ list.boxed-list > row {
 }
 
 .mullvad-map-viewport {
-  min-height: 200px;
+  min-height: 140px;
   border-radius: 14px;
   background-color: #0e1218;
 }
@@ -1384,13 +1384,13 @@ list.boxed-list > row {
 }
 
 .home-pane-left-inner {
-  padding: 20px 18px 24px;
+  padding: 14px 14px 16px;
   min-width: 0;
 }
 
 .home-pane-right {
   background-color: #0c0c0e;
-  padding: 12px 14px 14px;
+  padding: 8px 10px 10px;
   min-width: 0;
 }
 
