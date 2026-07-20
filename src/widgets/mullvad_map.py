@@ -85,6 +85,14 @@ class MullvadMap(Gtk.Box):
         self._target_x = self._cam_x
         self._target_y = self._cam_y
         self._target_scale = 1.0
+        # Auto-frame scale is the max zoom-out; scroll may go in closer.
+        self._base_scale = 1.0
+        self._base_x = self._cam_x
+        self._base_y = self._cam_y
+        self._max_user_scale = 40.0
+        self._pointer_x = 0.0
+        self._pointer_y = 0.0
+        self._user_zooming = False
 
         self._land_w, self._land_h, self._land = load_land_polygons()
 
@@ -113,6 +121,13 @@ class MullvadMap(Gtk.Box):
             click.set_button(1)
             click.connect("pressed", self._on_click)
             self._area.add_controller(click)
+
+            scroll = Gtk.EventControllerScroll.new(
+                Gtk.EventControllerScrollFlags.VERTICAL
+                | Gtk.EventControllerScrollFlags.DISCRETE
+            )
+            scroll.connect("scroll", self._on_scroll)
+            self._area.add_controller(scroll)
 
         self._caption = Gtk.Label(label="", xalign=0.5)
         self._caption.add_css_class("mullvad-map-caption")
@@ -184,6 +199,10 @@ class MullvadMap(Gtk.Box):
             self._target_x = _WORLD_W / 2
             self._target_y = _WORLD_H / 2
             self._target_scale = 1.0
+            self._base_scale = 1.0
+            self._base_x = self._target_x
+            self._base_y = self._target_y
+            self._user_zooming = False
             return
 
         city_mode = bool(self._active_city)
@@ -246,9 +265,16 @@ class MullvadMap(Gtk.Box):
         self._target_x = (min_x + max_x) / 2.0
         self._target_y = (min_y + max_y) / 2.0
         self._target_scale = scale
+        # Floor for scroll zoom-out = this auto-frame (cannot zoom out past it).
+        self._base_scale = scale
+        self._base_x = self._target_x
+        self._base_y = self._target_y
+        self._user_zooming = False
 
     def _ease_camera(self, dt: float) -> None:
-        # Smooth but decisive ease toward a deep zoom target.
+        # While user is scroll-zooming, keep camera under their control.
+        if self._user_zooming:
+            return
         dist = math.hypot(
             self._target_x - self._cam_x, self._target_y - self._cam_y
         ) + abs(self._target_scale - self._cam_scale) * 28
@@ -258,13 +284,17 @@ class MullvadMap(Gtk.Box):
         self._cam_x += (self._target_x - self._cam_x) * k
         self._cam_y += (self._target_y - self._cam_y) * k
 
-    def _view_to_world(self, vx: float, vy: float) -> tuple[float, float]:
+    def _view_metrics(self) -> tuple[float, float, float, float, float]:
+        """Return (aw, ah, fit, scale_px, cx, cy) for current camera."""
         alloc = self._area.get_allocation()
         aw = max(1.0, float(alloc.width))
         ah = max(1.0, float(alloc.height))
         fit = min(aw / _WORLD_W, ah / _WORLD_H)
         s = fit * self._cam_scale
-        cx, cy = aw / 2.0, ah / 2.0
+        return aw, ah, fit, s, aw / 2.0, ah / 2.0
+
+    def _view_to_world(self, vx: float, vy: float) -> tuple[float, float]:
+        _aw, _ah, _fit, s, cx, cy = self._view_metrics()
         return self._cam_x + (vx - cx) / s, self._cam_y + (vy - cy) / s
 
     def _nearest_city(
@@ -280,7 +310,47 @@ class MullvadMap(Gtk.Box):
                 best = c
         return best
 
+    def _on_scroll(self, _controller, _dx: float, dy: float) -> bool:
+        """Scroll up = zoom in; scroll down = zoom out (not past auto-frame)."""
+        if dy == 0:
+            return False
+
+        # Zoom toward cursor; keep world point under pointer fixed.
+        px, py = self._pointer_x, self._pointer_y
+        if px <= 0 and py <= 0:
+            _aw, _ah, *_rest = self._view_metrics()
+            px, py = _aw / 2.0, _ah / 2.0
+
+        wx, wy = self._view_to_world(px, py)
+
+        # dy < 0: scroll up / zoom in; dy > 0: zoom out
+        step = 1.14
+        if dy < 0:
+            new_scale = self._cam_scale * step
+        else:
+            new_scale = self._cam_scale / step
+
+        floor = max(0.5, self._base_scale)
+        new_scale = max(floor, min(new_scale, self._max_user_scale))
+        if abs(new_scale - self._cam_scale) < 1e-4:
+            return True
+
+        self._user_zooming = True
+        self._cam_scale = new_scale
+        # Re-anchor so (wx, wy) stays under the pointer
+        _aw, _ah, _fit, s, cx, cy = self._view_metrics()
+        self._cam_x = wx - (px - cx) / s
+        self._cam_y = wy - (py - cy) / s
+        # Snap targets so ease doesn't fight the user
+        self._target_scale = self._cam_scale
+        self._target_x = self._cam_x
+        self._target_y = self._cam_y
+        self._area.queue_draw()
+        return True
+
     def _on_motion(self, _c, x: float, y: float) -> None:
+        self._pointer_x = float(x)
+        self._pointer_y = float(y)
         wx, wy = self._view_to_world(x, y)
         hit = self._nearest_city(wx, wy)
         if hit is not self._hover:
