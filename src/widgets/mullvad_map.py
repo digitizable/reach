@@ -59,6 +59,7 @@ class MullvadMap(Gtk.Box):
         on_location: Callable[[str, str, str], None] | None = None,
         on_toast: Callable[[str], None] | None = None,
         interactive: bool = True,
+        fill: bool = False,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add_css_class("mullvad-map")
@@ -67,6 +68,7 @@ class MullvadMap(Gtk.Box):
         self._on_location = on_location
         self._on_toast = on_toast
         self._interactive = interactive
+        self._fill = fill
 
         self._cities: list[RelayCity] = []
         self._active_country = ""
@@ -76,7 +78,7 @@ class MullvadMap(Gtk.Box):
         self._busy = False
         self._last_t = 0.0
 
-        # Camera focus in world coords + scale
+        # Camera focus in world coords + scale (1 = full world)
         self._cam_x = _WORLD_W / 2
         self._cam_y = _WORLD_H / 2
         self._cam_scale = 1.0
@@ -88,8 +90,14 @@ class MullvadMap(Gtk.Box):
 
         self._area = Gtk.DrawingArea()
         self._area.add_css_class("mullvad-map-viewport")
-        self._area.set_content_height(self._height)
-        self._area.set_hexpand(True)
+        if fill:
+            self._area.set_vexpand(True)
+            self._area.set_hexpand(True)
+            # Prefer a tall viewport when filling a pane
+            self._area.set_content_height(max(self._height, 280))
+        else:
+            self._area.set_content_height(self._height)
+            self._area.set_hexpand(True)
         self._area.set_draw_func(self._draw)
         if interactive:
             self._area.set_cursor_from_name("pointer")
@@ -171,11 +179,13 @@ class MullvadMap(Gtk.Box):
             )
 
     def _fly_to_active(self) -> None:
+        """Zoom so the selected country/city bbox fills the viewport (with pad)."""
         if not self._active_country or self._active_country == "any":
             self._target_x = _WORLD_W / 2
             self._target_y = _WORLD_H / 2
             self._target_scale = 1.0
             return
+
         matches = [
             c
             for c in self._cities
@@ -188,14 +198,49 @@ class MullvadMap(Gtk.Box):
             ]
         if not matches:
             return
-        lat = sum(c.latitude for c in matches) / len(matches)
-        lon = sum(c.longitude for c in matches) / len(matches)
-        wx, wy = lonlat_to_world(lat, lon)
-        self._target_x, self._target_y = wx, wy
-        self._target_scale = 2.6 if self._active_city else 1.85
+
+        pts = [lonlat_to_world(c.latitude, c.longitude) for c in matches]
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        # Padding in world units so markers aren't on the edge
+        pad = 28.0 if self._active_city else 42.0
+        min_x, max_x = min(xs) - pad, max(xs) + pad
+        min_y, max_y = min(ys) - pad, max(ys) + pad
+        # Minimum span so a single city still has context
+        min_span_x = 36.0 if self._active_city else 55.0
+        min_span_y = 28.0 if self._active_city else 42.0
+        if max_x - min_x < min_span_x:
+            mid = (min_x + max_x) / 2
+            min_x, max_x = mid - min_span_x / 2, mid + min_span_x / 2
+        if max_y - min_y < min_span_y:
+            mid = (min_y + max_y) / 2
+            min_y, max_y = mid - min_span_y / 2, mid + min_span_y / 2
+
+        # Clamp to world
+        min_x = max(0.0, min_x)
+        max_x = min(_WORLD_W, max_x)
+        min_y = max(0.0, min_y)
+        max_y = min(_WORLD_H, max_y)
+
+        bbox_w = max(max_x - min_x, 8.0)
+        bbox_h = max(max_y - min_y, 8.0)
+        # Scale so bbox fills ~88% of the logical world view
+        scale_x = (_WORLD_W * 0.88) / bbox_w
+        scale_y = (_WORLD_H * 0.88) / bbox_h
+        scale = min(scale_x, scale_y)
+        scale = max(1.35, min(scale, 14.0))
+
+        self._target_x = (min_x + max_x) / 2.0
+        self._target_y = (min_y + max_y) / 2.0
+        self._target_scale = scale
 
     def _ease_camera(self, dt: float) -> None:
-        k = min(1.0, 3.5 * dt)
+        # Smooth ease-out toward target (snappier on large jumps)
+        dist = math.hypot(
+            self._target_x - self._cam_x, self._target_y - self._cam_y
+        ) + abs(self._target_scale - self._cam_scale) * 20
+        base = 2.8 if dist < 40 else 4.2
+        k = min(1.0, base * dt)
         self._cam_scale += (self._target_scale - self._cam_scale) * k
         self._cam_x += (self._target_x - self._cam_x) * k
         self._cam_y += (self._target_y - self._cam_y) * k

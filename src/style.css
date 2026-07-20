@@ -1367,12 +1367,58 @@ list.boxed-list > row {
 }
 
 .home-map {
-  margin-top: 14px;
-  margin-bottom: 4px;
+  margin: 0;
+  min-height: 0;
+}
+
+.home-split {
+  min-height: 0;
+  background-color: #111111;
+}
+
+.home-pane-left {
+  background-color: #0e0e10;
+  min-width: 300px;
+  max-width: 380px;
+  border-right: none;
+}
+
+.home-pane-left-inner {
+  padding: 20px 18px 24px;
+  min-width: 0;
+}
+
+.home-pane-right {
+  background-color: #0c0c0e;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+
+.home-split-sep {
+  background-color: #222226;
+  min-width: 1px;
+}
+
+.home-page .home-path-well {
+  margin: 4px 0;
+  padding: 12px 10px;
+  background-color: #0e0e10;
+  border: 1px solid #222226;
+  border-radius: 12px;
+}
+
+.home-mullvad {
+  margin-top: 0;
+  padding-top: 8px;
+  border-top: 1px solid #222226;
 }
 
 .home-card {
-  max-width: 560px;
-  min-width: 440px;
+  max-width: none;
+  min-width: 0;
   width: 100%;
+  box-shadow: none;
+  border: none;
+  background: transparent;
+  padding: 0;
 }

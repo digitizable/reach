@@ -12,7 +12,7 @@ from core.path_explain import explain_live, explain_profile
 from core.path_info import path_info_text
 from core.readiness import Readiness, profile_uses_mullvad_app_socks
 from services import Services
-from widgets.chrome import clear_box, fit_body
+from widgets.chrome import clear_box
 from widgets.path_graph import path_graph
 from widgets.state import kind_from_core
 
@@ -37,19 +37,24 @@ class HomePage(Gtk.Box):
         self._on_navigate = on_navigate
         self._action_busy = False
 
-        # Centered mission control on a soft stage (not edge-to-edge clutter)
-        stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        stage.add_css_class("home-stage")
-        stage.set_hexpand(True)
-        stage.set_vexpand(True)
-        stage.set_halign(Gtk.Align.CENTER)
-        stage.set_valign(Gtk.Align.CENTER)
+        # Two-pane home: left = connect/status, right = map + Mullvad
+        split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        split.add_css_class("home-split")
+        split.set_hexpand(True)
+        split.set_vexpand(True)
 
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        card.add_css_class("home-card")
-        card.set_halign(Gtk.Align.CENTER)
-        card.set_hexpand(True)
-        card.set_size_request(480, -1)
+        # ── Left pane: path control ────────────────────────────────
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        left.add_css_class("home-pane-left")
+        left.set_size_request(320, -1)
+        left.set_hexpand(False)
+        left.set_vexpand(True)
+
+        left_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        left_inner.add_css_class("home-pane-left-inner")
+        left_inner.set_valign(Gtk.Align.CENTER)
+        left_inner.set_halign(Gtk.Align.CENTER)
+        left_inner.set_hexpand(True)
 
         # Status hero
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -72,50 +77,25 @@ class HomePage(Gtk.Box):
         self._detail.add_css_class("home-status-detail")
         self._detail.set_halign(Gtk.Align.CENTER)
         self._detail.set_justify(Gtk.Justification.CENTER)
-        self._detail.set_max_width_chars(48)
+        self._detail.set_max_width_chars(32)
         hero.append(self._detail)
-        card.append(hero)
+        left_inner.append(hero)
 
-        # World map (Mullvad relay cities) — real land outlines
-        self._mv_map = None
-        try:
-            from widgets.mullvad_map import MullvadMap
-
-            self._mv_map = MullvadMap(
-                height=240,
-                interactive=True,
-                on_toast=self._on_toast,
-                on_location=self._on_map_location,
-            )
-            self._mv_map.add_css_class("home-map")
-            card.append(self._mv_map)
-        except Exception:
-            self._mv_map = None
-
-        # Path diagram in its own well (graph centered in the well)
+        # Path diagram
         path_well = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         path_well.add_css_class("home-path-well")
-        path_well.set_halign(Gtk.Align.FILL)
-        path_well.set_hexpand(True)
-
-        path_center = Gtk.CenterBox()
-        path_center.add_css_class("home-path-center")
-        path_center.set_halign(Gtk.Align.FILL)
-        path_center.set_hexpand(True)
+        path_well.set_halign(Gtk.Align.CENTER)
 
         self._path_host = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._path_host.add_css_class("home-path-host")
         self._path_host.set_halign(Gtk.Align.CENTER)
-        self._path_host.set_valign(Gtk.Align.CENTER)
-        self._path_host.set_hexpand(False)
-        path_center.set_center_widget(self._path_host)
-        path_well.append(path_center)
-        card.append(path_well)
+        path_well.append(self._path_host)
+        left_inner.append(path_well)
 
         # Path picker
         picker = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         picker.add_css_class("home-picker")
-        picker.set_halign(Gtk.Align.FILL)
+        picker.set_halign(Gtk.Align.CENTER)
 
         pick_lab = Gtk.Label(label="Active path", xalign=0.5)
         pick_lab.add_css_class("home-picker-label")
@@ -123,12 +103,11 @@ class HomePage(Gtk.Box):
         picker.append(pick_lab)
 
         profile_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        profile_row.add_css_class("home-profile-row")
         profile_row.set_halign(Gtk.Align.CENTER)
 
         self._profile_dd = Gtk.DropDown()
         self._profile_dd.add_css_class("home-profile-dd")
-        self._profile_dd.set_size_request(260, -1)
+        self._profile_dd.set_size_request(220, -1)
         self._profile_dd.set_tooltip_text("Active path")
         self._profile_dd.connect("notify::selected", self._on_profile_picked)
         self._profile_ids: list[str] = []
@@ -145,61 +124,9 @@ class HomePage(Gtk.Box):
         self._info_btn.connect("clicked", self._on_info)
         profile_row.append(self._info_btn)
         picker.append(profile_row)
-        card.append(picker)
+        left_inner.append(picker)
 
-        # Mullvad server picker (GPL-3 open-source client via CLI)
-        self._mv_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self._mv_box.add_css_class("home-mullvad")
-        self._mv_box.set_halign(Gtk.Align.FILL)
-        self._mv_box.set_visible(False)
-
-        mv_lab = Gtk.Label(label="Mullvad VPN server", xalign=0.5)
-        mv_lab.add_css_class("home-picker-label")
-        mv_lab.set_halign(Gtk.Align.CENTER)
-        self._mv_box.append(mv_lab)
-
-        mv_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        mv_row.set_halign(Gtk.Align.CENTER)
-        mv_row.set_hexpand(True)
-
-        self._mv_country = Gtk.DropDown()
-        self._mv_country.add_css_class("home-profile-dd")
-        self._mv_country.set_size_request(280, -1)
-        self._mv_country.set_tooltip_text("Country (or any)")
-        self._mv_country.connect("notify::selected", self._on_mv_country)
-        mv_row.append(self._mv_country)
-
-        self._mv_city = Gtk.DropDown()
-        self._mv_city.add_css_class("home-profile-dd")
-        self._mv_city.set_size_request(280, -1)
-        self._mv_city.set_tooltip_text("City (or any in country)")
-        self._mv_city.connect("notify::selected", self._on_mv_city)
-        mv_row.append(self._mv_city)
-
-        self._mv_host = Gtk.DropDown()
-        self._mv_host.add_css_class("home-profile-dd")
-        self._mv_host.set_size_request(280, -1)
-        self._mv_host.set_tooltip_text("Specific server (or any in city)")
-        self._mv_host.connect("notify::selected", self._on_mv_host)
-        mv_row.append(self._mv_host)
-
-        self._mv_status = Gtk.Label(label="", xalign=0.5, wrap=True)
-        self._mv_status.add_css_class("home-mullvad-status")
-        self._mv_status.set_halign(Gtk.Align.CENTER)
-        self._mv_status.set_max_width_chars(40)
-        mv_row.append(self._mv_status)
-
-        self._mv_box.append(mv_row)
-        card.append(self._mv_box)
-
-        self._mv_block = False
-        self._mv_country_codes: list[str] = []
-        self._mv_city_codes: list[str] = []
-        self._mv_hosts: list[str] = []
-        self._mv_ready = False
-        GLib.idle_add(self._init_mullvad_picker)
-
-        # Next-step + primary CTA
+        # Next-step + Connect
         foot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         foot.add_css_class("home-foot")
         foot.set_halign(Gtk.Align.CENTER)
@@ -216,14 +143,102 @@ class HomePage(Gtk.Box):
         self._primary = Gtk.Button(label="Connect")
         self._primary.add_css_class("suggested-action")
         self._primary.add_css_class("home-cta")
-        self._primary.set_size_request(220, 42)
+        self._primary.set_size_request(200, 40)
         self._primary.set_halign(Gtk.Align.CENTER)
         self._primary.connect("clicked", self._on_primary)
         foot.append(self._primary)
-        card.append(foot)
+        left_inner.append(foot)
 
-        stage.append(card)
-        self.append(fit_body(stage, margin=24))
+        left.append(left_inner)
+        split.append(left)
+
+        sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        sep.add_css_class("home-split-sep")
+        split.append(sep)
+
+        # ── Right pane: map + Mullvad server ───────────────────────
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        right.add_css_class("home-pane-right")
+        right.set_hexpand(True)
+        right.set_vexpand(True)
+
+        # World map fills most of the right pane
+        self._mv_map = None
+        try:
+            from widgets.mullvad_map import MullvadMap
+
+            self._mv_map = MullvadMap(
+                height=320,
+                interactive=True,
+                on_toast=self._on_toast,
+                on_location=self._on_map_location,
+                fill=True,
+            )
+            self._mv_map.add_css_class("home-map")
+            self._mv_map.set_vexpand(True)
+            self._mv_map.set_hexpand(True)
+            right.append(self._mv_map)
+        except Exception:
+            self._mv_map = None
+            placeholder = Gtk.Label(
+                label="Map unavailable",
+                xalign=0.5,
+            )
+            placeholder.add_css_class("muted")
+            placeholder.set_vexpand(True)
+            right.append(placeholder)
+
+        # Mullvad server pickers under the map
+        self._mv_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._mv_box.add_css_class("home-mullvad")
+        self._mv_box.set_halign(Gtk.Align.FILL)
+        self._mv_box.set_visible(False)
+
+        mv_lab = Gtk.Label(label="Mullvad VPN server", xalign=0)
+        mv_lab.add_css_class("home-picker-label")
+        self._mv_box.append(mv_lab)
+
+        mv_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        mv_row.set_halign(Gtk.Align.FILL)
+        mv_row.set_hexpand(True)
+
+        self._mv_country = Gtk.DropDown()
+        self._mv_country.add_css_class("home-profile-dd")
+        self._mv_country.set_hexpand(True)
+        self._mv_country.set_tooltip_text("Country (or any)")
+        self._mv_country.connect("notify::selected", self._on_mv_country)
+        mv_row.append(self._mv_country)
+
+        self._mv_city = Gtk.DropDown()
+        self._mv_city.add_css_class("home-profile-dd")
+        self._mv_city.set_hexpand(True)
+        self._mv_city.set_tooltip_text("City (or any in country)")
+        self._mv_city.connect("notify::selected", self._on_mv_city)
+        mv_row.append(self._mv_city)
+
+        self._mv_host = Gtk.DropDown()
+        self._mv_host.add_css_class("home-profile-dd")
+        self._mv_host.set_hexpand(True)
+        self._mv_host.set_tooltip_text("Specific server (or any in city)")
+        self._mv_host.connect("notify::selected", self._on_mv_host)
+        mv_row.append(self._mv_host)
+        self._mv_box.append(mv_row)
+
+        self._mv_status = Gtk.Label(label="", xalign=0, wrap=True)
+        self._mv_status.add_css_class("home-mullvad-status")
+        self._mv_box.append(self._mv_status)
+
+        right.append(self._mv_box)
+        split.append(right)
+
+        self._mv_block = False
+        self._mv_country_codes: list[str] = []
+        self._mv_city_codes: list[str] = []
+        self._mv_hosts: list[str] = []
+        self._mv_ready = False
+        GLib.idle_add(self._init_mullvad_picker)
+
+        self.append(split)
         self.refresh()
 
     def _nav(self, page_id: str) -> None:
