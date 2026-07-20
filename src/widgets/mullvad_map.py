@@ -311,11 +311,15 @@ class MullvadMap(Gtk.Box):
         return best
 
     def _on_scroll(self, _controller, _dx: float, dy: float) -> bool:
-        """Scroll up = zoom in; scroll down = zoom out (not past auto-frame)."""
+        """Scroll up = zoom in; scroll down = zoom out (not past auto-frame).
+
+        Zooming out re-centers toward the region frame center so the view
+        settles back on the full country/city framing.
+        """
         if dy == 0:
             return False
 
-        # Zoom toward cursor; keep world point under pointer fixed.
+        # Zoom toward cursor; keep world point under pointer fixed (zoom-in).
         px, py = self._pointer_x, self._pointer_y
         if px <= 0 and py <= 0:
             _aw, _ah, *_rest = self._view_metrics()
@@ -325,23 +329,58 @@ class MullvadMap(Gtk.Box):
 
         # dy < 0: scroll up / zoom in; dy > 0: zoom out
         step = 1.14
-        if dy < 0:
-            new_scale = self._cam_scale * step
-        else:
+        zooming_out = dy > 0
+        if zooming_out:
             new_scale = self._cam_scale / step
+        else:
+            new_scale = self._cam_scale * step
 
         floor = max(0.5, self._base_scale)
         new_scale = max(floor, min(new_scale, self._max_user_scale))
         if abs(new_scale - self._cam_scale) < 1e-4:
+            # Already at floor: hard-recenter on the region frame
+            if zooming_out:
+                self._cam_scale = floor
+                self._cam_x = self._base_x
+                self._cam_y = self._base_y
+                self._target_scale = floor
+                self._target_x = self._base_x
+                self._target_y = self._base_y
+                self._user_zooming = False
+                self._area.queue_draw()
             return True
 
+        old_scale = self._cam_scale
         self._user_zooming = True
         self._cam_scale = new_scale
-        # Re-anchor so (wx, wy) stays under the pointer
-        _aw, _ah, _fit, s, cx, cy = self._view_metrics()
-        self._cam_x = wx - (px - cx) / s
-        self._cam_y = wy - (py - cy) / s
-        # Snap targets so ease doesn't fight the user
+
+        if zooming_out:
+            # Blend center back to the auto-frame as we zoom out.
+            # t=0 at max zoom-in span, t=1 at base (full region frame).
+            span = max(self._max_user_scale - floor, 1e-3)
+            # How close we are to the zoom-out floor (0 = still zoomed in, 1 = at floor)
+            t = 1.0 - (new_scale - floor) / span
+            t = max(0.0, min(1.0, t))
+            # Ease-in so re-center accelerates near the floor
+            t = t * t
+            # Keep a bit of pointer-anchor early, then fully re-center
+            _aw, _ah, _fit, s, cx, cy = self._view_metrics()
+            anchored_x = wx - (px - cx) / s
+            anchored_y = wy - (py - cy) / s
+            # Stronger pull to base when near floor
+            pull = 0.35 + 0.65 * t
+            self._cam_x = anchored_x + (self._base_x - anchored_x) * pull
+            self._cam_y = anchored_y + (self._base_y - anchored_y) * pull
+            if new_scale <= floor + 1e-3:
+                self._cam_x = self._base_x
+                self._cam_y = self._base_y
+                self._user_zooming = False
+        else:
+            # Zoom in: keep world point under pointer fixed
+            _aw, _ah, _fit, s, cx, cy = self._view_metrics()
+            self._cam_x = wx - (px - cx) / s
+            self._cam_y = wy - (py - cy) / s
+
         self._target_scale = self._cam_scale
         self._target_x = self._cam_x
         self._target_y = self._cam_y
