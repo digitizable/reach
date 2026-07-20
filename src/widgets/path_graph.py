@@ -1,4 +1,4 @@
-"""Centered path diagram — slim icon nodes + arrows + exit/not-exit roles."""
+"""Centered path diagram — icon wells + arrows + exit/not-exit roles."""
 
 from __future__ import annotations
 
@@ -9,21 +9,21 @@ from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 from app_config import project_root
 
 _ICON_SIZE = 22
+_WELL_SIZE = 44
+_ARROW_WIDTH = 28
+_NODE_MIN_WIDTH = 64
+_ROW_SPACING = 8
 
 # Custom brand marks (not recolored by CSS).
 _ASSET_LOGOS: tuple[tuple[tuple[str, ...], str, str], ...] = (
-    # hop/label needles → asset filename, css class
     (("tor",), "tor.svg", "path-node-icon-tor"),
     (("reality", "xray", "xtls", "vless"), "reality.svg", "path-node-icon-reality"),
-    # White monochrome Mullvad gopher, no circle (path icons only).
-    # Prefer PNG: full Inkscape SVG can fail GdkPixbuf; rsvg-rendered PNG is reliable.
     (("mullvad",), "mullvad.png", "path-node-icon-mullvad"),
 )
 
 
 def _icon_for_hop(name: str) -> str:
     key = name.strip().lower()
-    # VPN uses a lock so it doesn't collide with Backends (network-server).
     table = {
         "you": "computer-symbolic",
         "device": "computer-symbolic",
@@ -45,7 +45,6 @@ def _icon_for_hop(name: str) -> str:
 
 
 def _asset_for_hop(*names: str) -> tuple[Path, str] | None:
-    """Match brand marks against hop kind and/or backend label."""
     assets = project_root() / "data" / "assets"
     key = " ".join(n.strip().lower() for n in names if n and n.strip())
     if not key:
@@ -55,7 +54,6 @@ def _asset_for_hop(*names: str) -> tuple[Path, str] | None:
             path = assets / filename
             if path.is_file():
                 return path, css
-            # SVG fallback if PNG missing (or vice versa)
             alt = assets / (
                 filename.replace(".png", ".svg")
                 if filename.endswith(".png")
@@ -79,11 +77,7 @@ def _display_scale() -> int:
     return max(1, int(mon.get_scale_factor()))
 
 
-_WELL_SIZE = 44  # matches CSS .path-node-well
-
-
 def _image_from_asset(path: Path, css_extra: str) -> Gtk.Image | None:
-    """Load SVG/PNG at device pixels for a sharp small mark."""
     scale = _display_scale()
     px = _ICON_SIZE * scale
     try:
@@ -104,7 +98,6 @@ def _image_from_asset(path: Path, css_extra: str) -> Gtk.Image | None:
 
 
 def _image_for(title: str, *, kind: str, also: str = "") -> Gtk.Image:
-    """Symbolic icon, or brand marks for Tor / REALITY / Mullvad."""
     if kind != "you":
         asset = _asset_for_hop(title, also)
         if asset is not None:
@@ -112,9 +105,7 @@ def _image_for(title: str, *, kind: str, also: str = "") -> Gtk.Image:
             if img is not None:
                 return img
 
-    icon_name = (
-        "computer-symbolic" if kind == "you" else _icon_for_hop(title)
-    )
+    icon_name = "computer-symbolic" if kind == "you" else _icon_for_hop(title)
     img = Gtk.Image.new_from_icon_name(icon_name)
     img.set_pixel_size(_ICON_SIZE)
     img.set_size_request(_ICON_SIZE, _ICON_SIZE)
@@ -126,20 +117,8 @@ def _image_for(title: str, *, kind: str, also: str = "") -> Gtk.Image:
     return img
 
 
-def _arrow(*, muted: bool = False) -> Gtk.Widget:
-    lab = Gtk.Label(label="→")
-    lab.add_css_class("path-arrow")
-    if muted:
-        lab.add_css_class("path-arrow-muted")
-    # Align with center of icon well (not labels below)
-    lab.set_valign(Gtk.Align.START)
-    lab.set_halign(Gtk.Align.CENTER)
-    lab.set_margin_top((_WELL_SIZE // 2) - 8)
-    return lab
-
-
 def _icon_well(img: Gtk.Widget) -> Gtk.Widget:
-    """Fixed square that truly centers the icon (GTK Box packs from start)."""
+    """Square well; icon dead-centered via CenterBox."""
     well = Gtk.CenterBox()
     well.add_css_class("path-node-well")
     well.set_halign(Gtk.Align.CENTER)
@@ -153,6 +132,31 @@ def _icon_well(img: Gtk.Widget) -> Gtk.Widget:
     return well
 
 
+def _arrow_slot(*, muted: bool = False) -> Gtk.Widget:
+    """
+    Arrow column matching well height so the glyph centers on the wells,
+    not on the full node (well + labels).
+    """
+    slot = Gtk.CenterBox()
+    slot.add_css_class("path-arrow-slot")
+    slot.set_size_request(_ARROW_WIDTH, _WELL_SIZE)
+    slot.set_halign(Gtk.Align.CENTER)
+    slot.set_valign(Gtk.Align.START)  # top-align with wells
+    slot.set_hexpand(False)
+    slot.set_vexpand(False)
+
+    lab = Gtk.Label(label="→")
+    lab.add_css_class("path-arrow")
+    if muted:
+        lab.add_css_class("path-arrow-muted")
+    lab.set_halign(Gtk.Align.CENTER)
+    lab.set_valign(Gtk.Align.CENTER)
+    lab.set_xalign(0.5)
+    lab.set_yalign(0.5)
+    slot.set_center_widget(lab)
+    return slot
+
+
 def _hop_node(
     title: str,
     *,
@@ -162,7 +166,7 @@ def _hop_node(
     sublabel: str = "",
     also: str = "",
 ) -> Gtk.Widget:
-    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     col.add_css_class("path-node")
     col.add_css_class(f"path-kind-{kind}")
     col.add_css_class(f"path-role-{role}")
@@ -173,6 +177,7 @@ def _hop_node(
     col.set_halign(Gtk.Align.CENTER)
     col.set_valign(Gtk.Align.START)
     col.set_hexpand(False)
+    col.set_size_request(_NODE_MIN_WIDTH, -1)
 
     img = _image_for(
         title if kind != "you" else "you", kind=kind, also=also or title
@@ -184,10 +189,16 @@ def _hop_node(
     lab.set_halign(Gtk.Align.CENTER)
     lab.set_justify(Gtk.Justification.CENTER)
     lab.set_xalign(0.5)
-    lab.set_max_width_chars(12)
+    try:
+        from gi.repository import Pango
+
+        lab.set_ellipsize(Pango.EllipsizeMode.END)
+    except Exception:
+        pass
+    lab.set_max_width_chars(10)
+    lab.set_width_chars(8)
     col.append(lab)
 
-    # Role tag under the name: exit / not exit / underlay
     tag = (sublabel or "").strip()
     if not tag and role in ("exit", "not-exit", "underlay", "entry"):
         tag = {
@@ -222,30 +233,28 @@ def path_graph(
     caption: str = "",
 ) -> Gtk.Widget:
     """
-    Slim centered chain.
-
-    `hops` are kinds (for icons). Optional `labels` override node text.
-    `roles` mark exit / not-exit / underlay so the last hop is not always
-    implied to be the public exit. Optional `caption` is plain English under
-    the row.
+    Centered hop chain: wells and arrows share one top band; labels sit under wells.
     """
-    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
     root.add_css_class("path-diagram")
     root.set_halign(Gtk.Align.CENTER)
+    root.set_valign(Gtk.Align.CENTER)
     root.set_hexpand(True)
 
     if not hops:
         empty_l = Gtk.Label(label=empty, xalign=0.5, wrap=True)
         empty_l.add_css_class("path-empty")
         empty_l.set_halign(Gtk.Align.CENTER)
+        empty_l.set_justify(Gtk.Justification.CENTER)
         root.append(empty_l)
         return root
 
-    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=_ROW_SPACING)
     row.add_css_class("path-row")
     row.set_halign(Gtk.Align.CENTER)
-    row.set_valign(Gtk.Align.CENTER)
+    row.set_valign(Gtk.Align.START)
     row.set_hexpand(False)
+    row.set_vexpand(False)
 
     row.append(_hop_node("You", live=live, kind="you", role="you", sublabel=""))
 
@@ -258,9 +267,8 @@ def path_graph(
         elif i == len(hops) - 1:
             role = "exit"
 
-        # Mute arrow into a hop that is not on the dial/exit path.
         muted_arrow = role in ("not-exit", "underlay")
-        row.append(_arrow(muted=muted_arrow))
+        row.append(_arrow_slot(muted=muted_arrow))
 
         label = hop
         if labels is not None and i < len(labels) and labels[i]:
@@ -269,7 +277,6 @@ def path_graph(
         if sublabels is not None and i < len(sublabels):
             sub = sublabels[i] or ""
 
-        # Visual kind for CSS: prefer exit over generic hop when role says so.
         vis_kind = role if role in ("exit", "entry", "not-exit", "underlay") else "hop"
         if i == 0 and role == "hop":
             vis_kind = "entry"
@@ -288,10 +295,15 @@ def path_graph(
     root.append(row)
 
     if caption and caption.strip():
-        cap = Gtk.Label(label=caption.strip(), wrap=True, justify=Gtk.Justification.CENTER)
+        cap = Gtk.Label(
+            label=caption.strip(),
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+        )
         cap.add_css_class("path-caption")
         cap.set_halign(Gtk.Align.CENTER)
-        cap.set_max_width_chars(42)
+        cap.set_xalign(0.5)
+        cap.set_max_width_chars(40)
         root.append(cap)
 
     return root

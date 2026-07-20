@@ -292,11 +292,12 @@ button.nav-btn.nav-btn-active {
 .path-row {
   background: transparent;
   padding: 0;
+  margin: 0 auto;
 }
 
 .path-node {
-  min-width: 0;
-  padding: 0 2px;
+  min-width: 64px;
+  padding: 0;
   background: transparent;
   border: none;
 }
@@ -304,6 +305,8 @@ button.nav-btn.nav-btn-active {
 .path-node-icon {
   color: #c8c8c8;
   opacity: 1;
+  margin: 0;
+  padding: 0;
 }
 
 /* Brand marks (Tor onion, Project X / Xray, white Mullvad) — don't recolor */
@@ -319,8 +322,8 @@ button.nav-btn.nav-btn-active {
 }
 
 .path-node-label {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 550;
   color: #8a8a8a;
   letter-spacing: 0.01em;
 }
@@ -354,11 +357,22 @@ button.nav-btn.nav-btn-active {
   opacity: 0.85;
 }
 
+/* Arrow sits in a slot the same height as icon wells */
+.path-arrow-slot {
+  min-width: 28px;
+  min-height: 44px;
+  max-height: 44px;
+  padding: 0;
+  margin: 0;
+}
+
 .path-arrow {
-  font-size: 13px;
-  color: #555555;
-  padding: 0 2px;
-  min-width: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #666666;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
 
 .path-arrow-muted {
@@ -1016,9 +1030,9 @@ button.suggested-action.home-cta:hover {
   background-color: #ffffff;
 }
 
-/* ── Path graph ─────────────────────────────────────── */
+/* ── Path graph (home well + nodes) ─────────────────── */
 .path-diagram {
-  padding: 4px 0;
+  padding: 2px 0 0;
 }
 
 .path-node-well {
@@ -1030,7 +1044,7 @@ button.suggested-action.home-cta:hover {
   background-color: #1a1a1c;
   border: 1px solid #2a2a2e;
   padding: 0;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .path-live .path-node-well {
@@ -1038,7 +1052,6 @@ button.suggested-action.home-cta:hover {
   border-color: #2d4a36;
 }
 
-/* Icons must sit dead-center in the well */
 .path-node-well .path-node-icon,
 .path-node-well image {
   margin: 0;
@@ -1054,6 +1067,18 @@ button.suggested-action.home-cta:hover {
 
 .path-live .path-node-label {
   color: #bbf7d0;
+}
+
+.home-path-well {
+  margin: 18px 0 8px;
+  padding: 18px 16px;
+  background-color: #0e0e10;
+  border: 1px solid #222226;
+  border-radius: 12px;
+}
+
+.home-path-host {
+  margin: 0 auto;
 }
 
 .path-arrow {

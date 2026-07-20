@@ -76,15 +76,24 @@ class HomePage(Gtk.Box):
         hero.append(self._detail)
         card.append(hero)
 
-        # Path diagram in its own well
+        # Path diagram in its own well (graph centered in the well)
         path_well = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         path_well.add_css_class("home-path-well")
         path_well.set_halign(Gtk.Align.FILL)
         path_well.set_hexpand(True)
-        self._path_host = Gtk.Box()
+
+        path_center = Gtk.CenterBox()
+        path_center.add_css_class("home-path-center")
+        path_center.set_halign(Gtk.Align.FILL)
+        path_center.set_hexpand(True)
+
+        self._path_host = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._path_host.add_css_class("home-path-host")
         self._path_host.set_halign(Gtk.Align.CENTER)
-        self._path_host.set_hexpand(True)
-        path_well.append(self._path_host)
+        self._path_host.set_valign(Gtk.Align.CENTER)
+        self._path_host.set_hexpand(False)
+        path_center.set_center_widget(self._path_host)
+        path_well.append(path_center)
         card.append(path_well)
 
         # Path picker
