@@ -23,18 +23,18 @@ class ReachWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, *, services: Services) -> None:
         super().__init__(application=app, title=APPLICATION_NAME)
         self.add_css_class("reach-window")
-        # Desktop operator shell — wide enough for master–detail / two-pane.
-        self.set_size_request(560, 640)
+        # Desktop operator shell — room for path graph + Mullvad picker / map.
+        self.set_size_request(600, 680)
         self.set_resizable(True)
         self.set_icon_name(APPLICATION_ICON)
 
         self._services = services
         w = int(getattr(services.config, "window_width", 0) or 0)
         h = int(getattr(services.config, "window_height", 0) or 0)
-        if w >= 560 and h >= 640:
+        if w >= 600 and h >= 680:
             self.set_default_size(w, h)
         else:
-            self.set_default_size(720, 780)
+            self.set_default_size(780, 860)
         self._nav_buttons: dict[str, Gtk.ToggleButton] = {}
         self._page_stack: Gtk.Stack | None = None
         self._toast_overlay: Adw.ToastOverlay

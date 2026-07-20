@@ -49,7 +49,7 @@ class HomePage(Gtk.Box):
         card.add_css_class("home-card")
         card.set_halign(Gtk.Align.CENTER)
         card.set_hexpand(False)
-        card.set_size_request(380, -1)
+        card.set_size_request(420, -1)
 
         # Status hero
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -131,6 +131,58 @@ class HomePage(Gtk.Box):
         picker.append(profile_row)
         card.append(picker)
 
+        # Mullvad server picker (GPL-3 open-source client via CLI)
+        self._mv_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._mv_box.add_css_class("home-mullvad")
+        self._mv_box.set_halign(Gtk.Align.FILL)
+        self._mv_box.set_visible(False)
+
+        mv_lab = Gtk.Label(label="Mullvad VPN server", xalign=0.5)
+        mv_lab.add_css_class("home-picker-label")
+        mv_lab.set_halign(Gtk.Align.CENTER)
+        self._mv_box.append(mv_lab)
+
+        mv_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        mv_row.set_halign(Gtk.Align.CENTER)
+        mv_row.set_hexpand(True)
+
+        self._mv_country = Gtk.DropDown()
+        self._mv_country.add_css_class("home-profile-dd")
+        self._mv_country.set_size_request(280, -1)
+        self._mv_country.set_tooltip_text("Country (or any)")
+        self._mv_country.connect("notify::selected", self._on_mv_country)
+        mv_row.append(self._mv_country)
+
+        self._mv_city = Gtk.DropDown()
+        self._mv_city.add_css_class("home-profile-dd")
+        self._mv_city.set_size_request(280, -1)
+        self._mv_city.set_tooltip_text("City (or any in country)")
+        self._mv_city.connect("notify::selected", self._on_mv_city)
+        mv_row.append(self._mv_city)
+
+        self._mv_host = Gtk.DropDown()
+        self._mv_host.add_css_class("home-profile-dd")
+        self._mv_host.set_size_request(280, -1)
+        self._mv_host.set_tooltip_text("Specific server (or any in city)")
+        self._mv_host.connect("notify::selected", self._on_mv_host)
+        mv_row.append(self._mv_host)
+
+        self._mv_status = Gtk.Label(label="", xalign=0.5, wrap=True)
+        self._mv_status.add_css_class("home-mullvad-status")
+        self._mv_status.set_halign(Gtk.Align.CENTER)
+        self._mv_status.set_max_width_chars(40)
+        mv_row.append(self._mv_status)
+
+        self._mv_box.append(mv_row)
+        card.append(self._mv_box)
+
+        self._mv_block = False
+        self._mv_country_codes: list[str] = []
+        self._mv_city_codes: list[str] = []
+        self._mv_hosts: list[str] = []
+        self._mv_ready = False
+        GLib.idle_add(self._init_mullvad_picker)
+
         # Next-step + primary CTA
         foot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         foot.add_css_class("home-foot")
@@ -165,6 +217,169 @@ class HomePage(Gtk.Box):
     def _root_window(self) -> Gtk.Window | None:
         w = self.get_root()
         return w if isinstance(w, Gtk.Window) else None
+
+    # ── Mullvad server picker (open-source CLI) ───────────────────
+
+    def _init_mullvad_picker(self) -> bool:
+        from core import mullvad as mv
+
+        if not mv.cli_path():
+            self._mv_box.set_visible(False)
+            return False
+        try:
+            cat = mv.load_catalog()
+        except Exception:
+            self._mv_box.set_visible(False)
+            return False
+        if not cat.countries:
+            self._mv_box.set_visible(False)
+            return False
+
+        self._mv_block = True
+        try:
+            labels = ["Any country"]
+            codes = ["any"]
+            for code, name in cat.countries:
+                labels.append(f"{name} ({code})")
+                codes.append(code)
+            self._mv_country_codes = codes
+            self._mv_country.set_model(Gtk.StringList.new(labels))
+
+            country, city, host = mv.get_location_constraint()
+            # Select country
+            idx = 0
+            if country and country in codes:
+                idx = codes.index(country)
+            self._mv_country.set_selected(idx)
+            self._reload_mv_cities(select_city=city, select_host=host)
+            st = mv.probe()
+            self._mv_status.set_text(st.summary or "")
+            self._mv_box.set_visible(True)
+            self._mv_ready = True
+        finally:
+            self._mv_block = False
+        return False
+
+    def _reload_mv_cities(
+        self, *, select_city: str = "", select_host: str = ""
+    ) -> None:
+        from core import mullvad as mv
+
+        cat = mv.load_catalog()
+        cidx = int(self._mv_country.get_selected())
+        country = (
+            self._mv_country_codes[cidx]
+            if 0 <= cidx < len(self._mv_country_codes)
+            else "any"
+        )
+        labels = ["Any city"]
+        codes = ["any"]
+        if country and country != "any":
+            for code, name in cat.cities.get(country, []):
+                labels.append(f"{name} ({code})")
+                codes.append(code)
+        self._mv_city_codes = codes
+        self._mv_block = True
+        try:
+            self._mv_city.set_model(Gtk.StringList.new(labels))
+            csel = 0
+            if select_city and select_city in codes:
+                csel = codes.index(select_city)
+            self._mv_city.set_selected(csel)
+            self._reload_mv_hosts(select_host=select_host)
+        finally:
+            self._mv_block = False
+
+    def _reload_mv_hosts(self, *, select_host: str = "") -> None:
+        from core import mullvad as mv
+
+        cat = mv.load_catalog()
+        cidx = int(self._mv_country.get_selected())
+        city_i = int(self._mv_city.get_selected())
+        country = (
+            self._mv_country_codes[cidx]
+            if 0 <= cidx < len(self._mv_country_codes)
+            else "any"
+        )
+        city = (
+            self._mv_city_codes[city_i]
+            if 0 <= city_i < len(self._mv_city_codes)
+            else "any"
+        )
+        labels = ["Any server"]
+        hosts = ["any"]
+        if country != "any" and city != "any":
+            for h in cat.hosts.get((country, city), []):
+                labels.append(h)
+                hosts.append(h)
+        self._mv_hosts = hosts
+        self._mv_block = True
+        try:
+            self._mv_host.set_model(Gtk.StringList.new(labels))
+            hsel = 0
+            if select_host and select_host in hosts:
+                hsel = hosts.index(select_host)
+            self._mv_host.set_selected(hsel)
+        finally:
+            self._mv_block = False
+
+    def _on_mv_country(self, *_a) -> None:
+        if self._mv_block or not self._mv_ready:
+            return
+        self._reload_mv_cities()
+        self._apply_mv_location()
+
+    def _on_mv_city(self, *_a) -> None:
+        if self._mv_block or not self._mv_ready:
+            return
+        self._reload_mv_hosts()
+        self._apply_mv_location()
+
+    def _on_mv_host(self, *_a) -> None:
+        if self._mv_block or not self._mv_ready:
+            return
+        self._apply_mv_location()
+
+    def _apply_mv_location(self) -> None:
+        from core import mullvad as mv
+
+        cidx = int(self._mv_country.get_selected())
+        city_i = int(self._mv_city.get_selected())
+        hidx = int(self._mv_host.get_selected())
+        country = (
+            self._mv_country_codes[cidx]
+            if 0 <= cidx < len(self._mv_country_codes)
+            else "any"
+        )
+        city = (
+            self._mv_city_codes[city_i]
+            if 0 <= city_i < len(self._mv_city_codes)
+            else "any"
+        )
+        host = self._mv_hosts[hidx] if 0 <= hidx < len(self._mv_hosts) else "any"
+
+        def worker() -> None:
+            ok, msg = mv.set_location(
+                country,
+                None if city in ("", "any") else city,
+                None if host in ("", "any") else host,
+            )
+            st = mv.probe()
+
+            def done() -> bool:
+                if ok:
+                    self._mv_status.set_text(st.summary or msg)
+                    if self._on_toast:
+                        self._on_toast(msg if len(msg) < 80 else st.summary)
+                else:
+                    self._mv_status.set_text(msg)
+                    if self._on_toast:
+                        self._on_toast(msg)
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(target=worker, name="mullvad-set-location", daemon=True).start()
 
     def _on_profile_picked(self, *_a) -> None:
         if self._profile_dd_block:

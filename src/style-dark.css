@@ -1332,3 +1332,35 @@ list.boxed-list > row {
   background-color: #161618;
   border: 1px solid #2e2e32;
 }
+
+/* Mullvad home picker + animated map */
+.home-mullvad {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #262628;
+}
+
+.home-mullvad-status {
+  font-size: 11px;
+  color: #9a9a9a;
+  margin-top: 2px;
+}
+
+.mullvad-map {
+  margin: 4px 0 8px;
+  padding: 8px;
+  background-color: #0c0c10;
+  border: 1px solid #262628;
+  border-radius: 12px;
+}
+
+.mullvad-map-caption {
+  font-size: 10px;
+  color: #52525b;
+  letter-spacing: 0.02em;
+}
+
+.home-card {
+  max-width: 480px;
+  min-width: 400px;
+}

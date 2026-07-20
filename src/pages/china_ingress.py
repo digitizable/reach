@@ -119,6 +119,19 @@ class ChinaIngressPage(Gtk.Box):
         left.set_hexpand(False)
         left.set_vexpand(True)
         left.append(self._hero_territory())
+        # Animated Mullvad relay map (GPL client + public location feed)
+        try:
+            from widgets.mullvad_map import MullvadMap
+
+            self._mv_map = MullvadMap(height=168)
+            left.append(self._mv_map)
+            from core import mullvad as mv
+
+            if mv.cli_path():
+                cc, city, _ = mv.get_location_constraint()
+                self._mv_map.set_active(cc, city)
+        except Exception:
+            self._mv_map = None
         left.append(self._door_cards())
         left.append(self._path_diagram())
         left.append(self._group_readiness())

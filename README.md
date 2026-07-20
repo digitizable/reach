@@ -12,7 +12,7 @@ Linux only for now.
 
 **Formerly Spectre Desktop** (config under `~/.config/spectre-desktop` and `~/.local/share/spectre-desktop` migrates to `reach` on first run).
 
-## Status (0.4.2)
+## Status (0.4.4)
 
 Desktop-sized shell (default **720×780**, resizable, remembers size). **Paths** and **Adapters** use master–detail; **Doors** is two-pane; **Tools** card grid; **Settings** readable column. Mullvad, tray, preflight, exclude apps, territories.
 
@@ -35,7 +35,7 @@ Define backends, bind them on profile hops, then **Connect**.
 
 | Page | Role |
 |------|------|
-| **Home** | Status, path diagram, path picker, Connect / Disconnect |
+| **Home** | Status, path, path picker, **Mullvad server** (country/city/host), Connect |
 | **Paths** | Path recipes (profiles); hop order; bind each hop to an adapter |
 | **Adapters** | VPN, REALITY, Tor, proxy backends hops can use |
 | **Doors** | Territory ingress — inbound host or dial-out (Inverse Snowflake) |

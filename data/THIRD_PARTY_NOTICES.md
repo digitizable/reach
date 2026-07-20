@@ -23,3 +23,8 @@ Project X, Xray, and REALITY names and marks belong to their respective owners.
 
 - **Source:** [djaiss/mapsicon](https://github.com/djaiss/mapsicon)
 - **Use:** Territory silhouettes under `data/assets/map-*.svg`
+
+## Mullvad VPN
+
+- **Client:** [mullvadvpn-app](https://github.com/mullvad/mullvadvpn-app) — **GPL-3.0**
+- **Use:** Reach drives the installed `mullvad` CLI for status, connect/disconnect, and relay location. The animated map uses Mullvad’s public relay location API (`api.mullvad.net`) for city coordinates. Reach does not ship Mullvad’s proprietary branding map assets; dots are generated in-app.
