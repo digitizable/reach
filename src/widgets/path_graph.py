@@ -79,6 +79,9 @@ def _display_scale() -> int:
     return max(1, int(mon.get_scale_factor()))
 
 
+_WELL_SIZE = 44  # matches CSS .path-node-well
+
+
 def _image_from_asset(path: Path, css_extra: str) -> Gtk.Image | None:
     """Load SVG/PNG at device pixels for a sharp small mark."""
     scale = _display_scale()
@@ -92,6 +95,9 @@ def _image_from_asset(path: Path, css_extra: str) -> Gtk.Image | None:
         img.add_css_class("path-node-icon")
         img.add_css_class(css_extra)
         img.set_halign(Gtk.Align.CENTER)
+        img.set_valign(Gtk.Align.CENTER)
+        img.set_hexpand(False)
+        img.set_vexpand(False)
         return img
     except GLib.Error:
         return None
@@ -111,8 +117,12 @@ def _image_for(title: str, *, kind: str, also: str = "") -> Gtk.Image:
     )
     img = Gtk.Image.new_from_icon_name(icon_name)
     img.set_pixel_size(_ICON_SIZE)
+    img.set_size_request(_ICON_SIZE, _ICON_SIZE)
     img.add_css_class("path-node-icon")
     img.set_halign(Gtk.Align.CENTER)
+    img.set_valign(Gtk.Align.CENTER)
+    img.set_hexpand(False)
+    img.set_vexpand(False)
     return img
 
 
@@ -121,10 +131,26 @@ def _arrow(*, muted: bool = False) -> Gtk.Widget:
     lab.add_css_class("path-arrow")
     if muted:
         lab.add_css_class("path-arrow-muted")
-    lab.set_valign(Gtk.Align.CENTER)
+    # Align with center of icon well (not labels below)
+    lab.set_valign(Gtk.Align.START)
     lab.set_halign(Gtk.Align.CENTER)
-    lab.set_margin_bottom(14)
+    lab.set_margin_top((_WELL_SIZE // 2) - 8)
     return lab
+
+
+def _icon_well(img: Gtk.Widget) -> Gtk.Widget:
+    """Fixed square that truly centers the icon (GTK Box packs from start)."""
+    well = Gtk.CenterBox()
+    well.add_css_class("path-node-well")
+    well.set_halign(Gtk.Align.CENTER)
+    well.set_valign(Gtk.Align.CENTER)
+    well.set_size_request(_WELL_SIZE, _WELL_SIZE)
+    well.set_hexpand(False)
+    well.set_vexpand(False)
+    img.set_halign(Gtk.Align.CENTER)
+    img.set_valign(Gtk.Align.CENTER)
+    well.set_center_widget(img)
+    return well
 
 
 def _hop_node(
@@ -145,21 +171,19 @@ def _hop_node(
     if role in ("not-exit", "underlay"):
         col.add_css_class("path-node-muted")
     col.set_halign(Gtk.Align.CENTER)
-    col.set_valign(Gtk.Align.CENTER)
+    col.set_valign(Gtk.Align.START)
     col.set_hexpand(False)
 
-    icon_well = Gtk.Box()
-    icon_well.add_css_class("path-node-well")
-    icon_well.set_halign(Gtk.Align.CENTER)
-    icon_well.set_valign(Gtk.Align.CENTER)
-    icon_well.append(
-        _image_for(title if kind != "you" else "you", kind=kind, also=also or title)
+    img = _image_for(
+        title if kind != "you" else "you", kind=kind, also=also or title
     )
-    col.append(icon_well)
+    col.append(_icon_well(img))
 
     lab = Gtk.Label(label=title)
     lab.add_css_class("path-node-label")
     lab.set_halign(Gtk.Align.CENTER)
+    lab.set_justify(Gtk.Justification.CENTER)
+    lab.set_xalign(0.5)
     lab.set_max_width_chars(12)
     col.append(lab)
 
@@ -180,6 +204,8 @@ def _hop_node(
         elif role in ("not-exit", "underlay"):
             sub.add_css_class("path-node-sub-muted")
         sub.set_halign(Gtk.Align.CENTER)
+        sub.set_justify(Gtk.Justification.CENTER)
+        sub.set_xalign(0.5)
         col.append(sub)
 
     return col

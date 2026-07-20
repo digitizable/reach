@@ -847,10 +847,10 @@ toast {
 .nav-btn.nav-btn-active,
 button.nav-btn:checked,
 button.nav-btn.nav-btn-active {
-  background-color: #1c1c1e;
-  color: #ffffff;
+  background-color: #1a1a1c;
+  color: #d4d4d4;
   box-shadow: none;
-  border: 1px solid #333333;
+  border: none;
 }
 
 .nav-section-sep {
@@ -1022,17 +1022,28 @@ button.suggested-action.home-cta:hover {
 }
 
 .path-node-well {
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 44px;
+  max-height: 44px;
   border-radius: 12px;
   background-color: #1a1a1c;
   border: 1px solid #2a2a2e;
-  padding: 8px;
+  padding: 0;
+  margin: 0 auto;
 }
 
 .path-live .path-node-well {
   background-color: #142018;
   border-color: #2d4a36;
+}
+
+/* Icons must sit dead-center in the well */
+.path-node-well .path-node-icon,
+.path-node-well image {
+  margin: 0;
+  padding: 0;
+  -gtk-icon-size: 22px;
 }
 
 .path-node-label {
