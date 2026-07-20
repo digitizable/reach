@@ -179,18 +179,19 @@ class MullvadMap(Gtk.Box):
             )
 
     def _fly_to_active(self) -> None:
-        """Zoom so the selected country/city bbox fills the viewport (with pad)."""
+        """Zoom *tight* on the selected country or city (animated)."""
         if not self._active_country or self._active_country == "any":
             self._target_x = _WORLD_W / 2
             self._target_y = _WORLD_H / 2
             self._target_scale = 1.0
             return
 
+        city_mode = bool(self._active_city)
         matches = [
             c
             for c in self._cities
             if c.country_code == self._active_country
-            and (not self._active_city or c.city_code == self._active_city)
+            and (not city_mode or c.city_code == self._active_city)
         ]
         if not matches:
             matches = [
@@ -202,44 +203,75 @@ class MullvadMap(Gtk.Box):
         pts = [lonlat_to_world(c.latitude, c.longitude) for c in matches]
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
-        # Padding in world units so markers aren't on the edge
-        pad = 28.0 if self._active_city else 42.0
-        min_x, max_x = min(xs) - pad, max(xs) + pad
-        min_y, max_y = min(ys) - pad, max(ys) + pad
-        # Minimum span so a single city still has context
-        min_span_x = 36.0 if self._active_city else 55.0
-        min_span_y = 28.0 if self._active_city else 42.0
-        if max_x - min_x < min_span_x:
-            mid = (min_x + max_x) / 2
-            min_x, max_x = mid - min_span_x / 2, mid + min_span_x / 2
-        if max_y - min_y < min_span_y:
-            mid = (min_y + max_y) / 2
-            min_y, max_y = mid - min_span_y / 2, mid + min_span_y / 2
+        cx = sum(xs) / len(xs)
+        cy = sum(ys) / len(ys)
 
-        # Clamp to world
+        # Tight padding — we want the region to dominate the frame.
+        if city_mode:
+            pad = 6.0
+            min_span = 12.0
+            fill = 0.55  # smaller world box → higher zoom
+            boost = 2.4
+            min_scale, max_scale = 12.0, 28.0
+        else:
+            # Country: prefer a close view of the cluster core, not the full
+            # outlier span (e.g. US coasts would stay too zoomed-out).
+            pad = 10.0
+            min_span = 18.0
+            fill = 0.62
+            boost = 2.1
+            min_scale, max_scale = 7.5, 22.0
+
+        if len(pts) == 1 or city_mode:
+            # Single point / city: fixed tight frame around the marker.
+            half = min_span / 2.0 + pad
+            min_x, max_x = cx - half, cx + half
+            min_y, max_y = cy - half, cy + half
+        else:
+            # Use interquartile-ish trim so one remote city doesn't kill zoom.
+            sxs, sys = sorted(xs), sorted(ys)
+            n = len(sxs)
+            lo = max(0, n // 8)
+            hi = max(lo + 1, n - lo)
+            min_x, max_x = sxs[lo] - pad, sxs[hi - 1] + pad
+            min_y, max_y = sys[lo] - pad, sys[hi - 1] + pad
+            # If still huge, fall back to centroid window (really close).
+            if (max_x - min_x) > _WORLD_W * 0.22 or (max_y - min_y) > _WORLD_H * 0.22:
+                half_x = max(min_span, _WORLD_W * 0.07)
+                half_y = max(min_span * 0.75, _WORLD_H * 0.07)
+                min_x, max_x = cx - half_x, cx + half_x
+                min_y, max_y = cy - half_y, cy + half_y
+
+        if max_x - min_x < min_span:
+            mid = (min_x + max_x) / 2
+            min_x, max_x = mid - min_span / 2, mid + min_span / 2
+        if max_y - min_y < min_span * 0.75:
+            mid = (min_y + max_y) / 2
+            half = min_span * 0.4
+            min_y, max_y = mid - half, mid + half
+
         min_x = max(0.0, min_x)
         max_x = min(_WORLD_W, max_x)
         min_y = max(0.0, min_y)
         max_y = min(_WORLD_H, max_y)
 
-        bbox_w = max(max_x - min_x, 8.0)
-        bbox_h = max(max_y - min_y, 8.0)
-        # Scale so bbox fills ~88% of the logical world view
-        scale_x = (_WORLD_W * 0.88) / bbox_w
-        scale_y = (_WORLD_H * 0.88) / bbox_h
-        scale = min(scale_x, scale_y)
-        scale = max(1.35, min(scale, 14.0))
+        bbox_w = max(max_x - min_x, 4.0)
+        bbox_h = max(max_y - min_y, 4.0)
+        scale_x = (_WORLD_W * fill) / bbox_w
+        scale_y = (_WORLD_H * fill) / bbox_h
+        scale = min(scale_x, scale_y) * boost
+        scale = max(min_scale, min(scale, max_scale))
 
         self._target_x = (min_x + max_x) / 2.0
         self._target_y = (min_y + max_y) / 2.0
         self._target_scale = scale
 
     def _ease_camera(self, dt: float) -> None:
-        # Smooth ease-out toward target (snappier on large jumps)
+        # Smooth but decisive ease toward a deep zoom target.
         dist = math.hypot(
             self._target_x - self._cam_x, self._target_y - self._cam_y
-        ) + abs(self._target_scale - self._cam_scale) * 20
-        base = 2.8 if dist < 40 else 4.2
+        ) + abs(self._target_scale - self._cam_scale) * 28
+        base = 3.2 if dist < 50 else 5.0
         k = min(1.0, base * dt)
         self._cam_scale += (self._target_scale - self._cam_scale) * k
         self._cam_x += (self._target_x - self._cam_x) * k
