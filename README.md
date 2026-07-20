@@ -1,9 +1,7 @@
 # Reach
 
-> **Experimental.**
-
 <p align="center">
-  <img src="data/assets/banner-readme.png" alt="Reach" width="980"/>
+  <img src="data/assets/app-icon.png" alt="Reach" width="160"/>
 </p>
 
 **Reach** is the GTK 4 + libadwaita **operator shell** for composing privacy paths and territory doors. Today it drives the [Spectre](https://github.com/digitizable/spectre) core (`spectred`). The product vision is broader: one control surface for paths, reverse footholds, cover, and measurement — with Spectre, [Drift](https://github.com/digitizable/drift), [Mirage](https://github.com/digitizable/mirage), and [Sounding](https://github.com/digitizable/sounding) as tools underneath.
@@ -138,7 +136,7 @@ Uninstall: `./uninstall.sh`.
 
 ## Brand
 
-Mark: [path-distance](https://game-icons.net/1x1/delapouite/path-distance.html) by Delapouite ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)) — multi-node path, for composition and reach. See [THIRD_PARTY_NOTICES.md](data/THIRD_PARTY_NOTICES.md).
+App icon and in-app mark: Creation of Adam hands (fresco plate + white outline). See [THIRD_PARTY_NOTICES.md](data/THIRD_PARTY_NOTICES.md).
 
 ## Related
 

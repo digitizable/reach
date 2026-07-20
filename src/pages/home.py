@@ -43,18 +43,29 @@ class HomePage(Gtk.Box):
         split.set_hexpand(True)
         split.set_vexpand(True)
 
-        # ── Left pane: path control ────────────────────────────────
+        # ── Left pane: path control (content centered in pane) ─────
         left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         left.add_css_class("home-pane-left")
         left.set_size_request(320, -1)
         left.set_hexpand(False)
         left.set_vexpand(True)
 
-        left_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        # CenterBox pins the control stack in the middle of the pane
+        # (both axes), so status / path / Connect don't sit top-left.
+        left_center = Gtk.CenterBox()
+        left_center.set_orientation(Gtk.Orientation.VERTICAL)
+        left_center.add_css_class("home-pane-left-center")
+        left_center.set_hexpand(True)
+        left_center.set_vexpand(True)
+        left_center.set_halign(Gtk.Align.FILL)
+        left_center.set_valign(Gtk.Align.FILL)
+
+        left_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         left_inner.add_css_class("home-pane-left-inner")
-        left_inner.set_valign(Gtk.Align.CENTER)
         left_inner.set_halign(Gtk.Align.CENTER)
-        left_inner.set_hexpand(True)
+        left_inner.set_valign(Gtk.Align.CENTER)
+        left_inner.set_hexpand(False)
+        left_inner.set_vexpand(False)
 
         # Status hero
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -149,20 +160,21 @@ class HomePage(Gtk.Box):
         foot.append(self._primary)
         left_inner.append(foot)
 
-        left.append(left_inner)
+        left_center.set_center_widget(left_inner)
+        left.append(left_center)
         split.append(left)
 
         sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         sep.add_css_class("home-split-sep")
         split.append(sep)
 
-        # ── Right pane: map + Mullvad server ───────────────────────
-        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        # ── Right pane: map flush to top/left/right + Mullvad under ─
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         right.add_css_class("home-pane-right")
         right.set_hexpand(True)
         right.set_vexpand(True)
 
-        # World map fills most of the right pane
+        # World map: full-bleed top of the pane (no side/top inset)
         self._mv_map = None
         try:
             from widgets.mullvad_map import MullvadMap
@@ -177,6 +189,8 @@ class HomePage(Gtk.Box):
             self._mv_map.add_css_class("home-map")
             self._mv_map.set_vexpand(True)
             self._mv_map.set_hexpand(True)
+            self._mv_map.set_halign(Gtk.Align.FILL)
+            self._mv_map.set_valign(Gtk.Align.FILL)
             right.append(self._mv_map)
         except Exception:
             self._mv_map = None
@@ -188,10 +202,11 @@ class HomePage(Gtk.Box):
             placeholder.set_vexpand(True)
             right.append(placeholder)
 
-        # Mullvad server pickers under the map
+        # Mullvad server pickers under the map (padded; map is edge-flush)
         self._mv_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._mv_box.add_css_class("home-mullvad")
         self._mv_box.set_halign(Gtk.Align.FILL)
+        self._mv_box.set_hexpand(True)
         self._mv_box.set_visible(False)
 
         mv_lab = Gtk.Label(label="Mullvad VPN server", xalign=0)

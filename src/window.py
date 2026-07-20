@@ -236,8 +236,9 @@ class ReachWindow(Adw.ApplicationWindow):
         box.set_halign(Gtk.Align.CENTER)
         box.set_valign(Gtk.Align.CENTER)
 
-        # Brand mark if available
-        mark = self._brand_mark(40)
+        # Brand mark — large hands outline as the loading hero
+        mark = self._brand_mark(140)
+        mark.add_css_class("brand-mark-loading")
         mark.set_halign(Gtk.Align.CENTER)
         box.append(mark)
 
@@ -509,8 +510,6 @@ class ReachWindow(Adw.ApplicationWindow):
         img.add_css_class("brand-mark")
         img.set_halign(Gtk.Align.CENTER)
         img.set_valign(Gtk.Align.CENTER)
-        img.set_margin_top(8)
-        img.set_margin_bottom(8)
         img.set_tooltip_text(APPLICATION_NAME)
         # Prevent CSS from stretching the paintable (blur source).
         img.set_size_request(size, size)
@@ -521,7 +520,8 @@ class ReachWindow(Adw.ApplicationWindow):
         rail.add_css_class("nav-rail")
         rail.set_vexpand(True)
 
-        rail.append(self._brand_mark(26))
+        # Hands outline mark — large enough to read in the narrow rail
+        rail.append(self._brand_mark(44))
 
         first: Gtk.ToggleButton | None = None
         for item in NAV_ITEMS:

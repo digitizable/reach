@@ -1,14 +1,10 @@
 # Third-party notices
 
-## Game Icons — path-distance
+## App icon & mark — Creation of Adam hands
 
-- **Work:** [path-distance](https://game-icons.net/1x1/delapouite/path-distance.html)
-- **Author:** Delapouite
-- **Source:** [game-icons/icons](https://github.com/game-icons/icons) (`delapouite/path-distance.svg`)
-- **License:** [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
-
-Used as the Reach mark (`data/assets/mark.svg`) and app icon glyph.
-Attribution is required under CC BY 3.0.
+- **App icon:** User-provided plate (`for-grok/app-icon-2.jpg`) — hands on green–blue wash, outer white removed, rounded transparent plate
+- **Sidebar / loading mark:** User-provided outline (`for-grok/hands-outline.jpg`) rendered white on transparent (`data/assets/mark.svg`)
+- **Use:** `data/icons/hicolor/scalable/apps/com.digitizable.reach.svg`, `data/assets/mark.svg`, `data/assets/app-icon.png` (README)
 
 ## Project X / Xray logo
 

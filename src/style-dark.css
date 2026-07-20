@@ -36,9 +36,15 @@ headerbar.top-header {
 
 /* Crisp mark — no opacity/filter, no forced stretch */
 .brand-mark {
-  margin: 8px 0 8px 0;
+  margin: 12px 0 10px 0;
   opacity: 1;
   -gtk-icon-filter: none;
+}
+
+.brand-mark-loading {
+  margin: 0 0 12px 0;
+  min-width: 140px;
+  min-height: 140px;
 }
 
 .nav-btn {
@@ -874,7 +880,7 @@ button.nav-btn.nav-btn-active {
 }
 
 .brand-mark {
-  margin: 10px 0 12px 0;
+  margin: 12px 0 14px 0;
 }
 
 /* Pane headers */
@@ -1335,8 +1341,8 @@ list.boxed-list > row {
 
 /* Mullvad home picker + animated map */
 .home-mullvad {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 0;
+  padding: 10px 12px 12px;
   border-top: 1px solid #262628;
 }
 
@@ -1347,23 +1353,24 @@ list.boxed-list > row {
 }
 
 .mullvad-map {
-  margin: 12px 0 4px;
+  margin: 0;
   padding: 0;
   background-color: transparent;
 }
 
 .mullvad-map-viewport {
+  min-width: 120px;
   min-height: 140px;
-  border-radius: 14px;
-  background-color: #0e1218;
+  border-radius: 0;
+  background-color: #0c1016;
 }
 
 .mullvad-map-caption {
   font-size: 10px;
   color: #71717a;
   letter-spacing: 0.02em;
-  margin-top: 4px;
-  padding: 0 4px;
+  margin: 0;
+  padding: 6px 12px 4px;
 }
 
 .home-map {
@@ -1383,14 +1390,29 @@ list.boxed-list > row {
   border-right: none;
 }
 
-.home-pane-left-inner {
-  padding: 14px 14px 16px;
+.home-pane-left-center {
   min-width: 0;
+  min-height: 0;
+}
+
+.home-pane-left-inner {
+  padding: 20px 18px 24px;
+  min-width: 0;
+  max-width: 300px;
+}
+
+.home-pane-left-inner .home-hero,
+.home-pane-left-inner .home-path-well,
+.home-pane-left-inner .home-picker,
+.home-pane-left-inner .home-foot {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .home-pane-right {
   background-color: #0c0c0e;
-  padding: 8px 10px 10px;
+  /* Map is full-bleed top/left/right; controls carry their own padding */
+  padding: 0;
   min-width: 0;
 }
 
@@ -1400,17 +1422,22 @@ list.boxed-list > row {
 }
 
 .home-page .home-path-well {
-  margin: 4px 0;
-  padding: 12px 10px;
+  margin: 2px 0;
+  padding: 8px 8px;
   background-color: #0e0e10;
   border: 1px solid #222226;
   border-radius: 12px;
 }
 
+.home-status-title {
+  font-size: 22px;
+}
+
 .home-mullvad {
   margin-top: 0;
-  padding-top: 8px;
+  padding: 10px 12px 12px;
   border-top: 1px solid #222226;
+  background-color: #0c0c0e;
 }
 
 /* Startup loading screen */

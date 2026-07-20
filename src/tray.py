@@ -600,7 +600,7 @@ class ReachTray:
     def _menu_items(self) -> list[tuple[int, dict[str, GLib.Variant]]]:
         """Visible menu entries for the current connection state."""
         items: list[tuple[int, dict[str, GLib.Variant]]] = [
-            (_MID_SHOW, _menu_props(label="Show Spectre")),
+            (_MID_SHOW, _menu_props(label="Show Reach")),
         ]
         if self._path_up or self._connecting:
             items.append((_MID_DISCONNECT, _menu_props(label="Disconnect")))
