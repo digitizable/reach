@@ -47,6 +47,7 @@ class ReachWindow(Adw.ApplicationWindow):
         self._settings: SettingsPage | None = None
         self._window_title: Adw.WindowTitle | None = None
         self._ready = False
+        self._bootstrapped = False
         # Periodic core poll so CLI/tray path changes appear without clicking.
         self._status_poll_id: int | None = None
         self._last_status_sig: tuple | None = None
@@ -59,7 +60,9 @@ class ReachWindow(Adw.ApplicationWindow):
 
         header = Adw.HeaderBar()
         header.add_css_class("top-header")
-        self._window_title = Adw.WindowTitle(title=APPLICATION_NAME, subtitle="")
+        self._window_title = Adw.WindowTitle(
+            title=APPLICATION_NAME, subtitle="Loading…"
+        )
         header.set_title_widget(self._window_title)
         header.set_show_end_title_buttons(True)
         header.set_show_start_title_buttons(True)
@@ -74,22 +77,115 @@ class ReachWindow(Adw.ApplicationWindow):
         self._toast_overlay.set_vexpand(True)
         root.set_content(self._toast_overlay)
 
-        shell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        shell.add_css_class("shell")
-        shell.set_hexpand(True)
-        shell.set_vexpand(True)
-        shell.append(self._build_rail())
-        shell.append(self._build_pages())
-        self._toast_overlay.set_child(shell)
+        # Show loading screen immediately; build real shell after assets load.
+        self._root_stack = Gtk.Stack()
+        self._root_stack.set_hexpand(True)
+        self._root_stack.set_vexpand(True)
+        self._root_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self._root_stack.set_transition_duration(220)
 
-        self._ready = True
-        self._navigate(DEFAULT_PAGE)
-        self._sync_chrome()
+        self._loading = self._build_loading_screen()
+        self._root_stack.add_named(self._loading, "loading")
+
+        self._shell_host = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self._shell_host.add_css_class("shell")
+        self._shell_host.set_hexpand(True)
+        self._shell_host.set_vexpand(True)
+        self._root_stack.add_named(self._shell_host, "app")
+        self._root_stack.set_visible_child_name("loading")
+
+        self._toast_overlay.set_child(self._root_stack)
+
         self.connect("close-request", self._on_close_request)
         self.connect("map", self._on_map)
         self.connect("unmap", self._on_unmap)
-        # Start polling even if already mapped
-        self._start_status_poll()
+
+        # First paint → load assets in background → build UI
+        GLib.idle_add(self._start_bootstrap)
+
+    def _build_loading_screen(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        box.add_css_class("loading-screen")
+        box.set_hexpand(True)
+        box.set_vexpand(True)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_valign(Gtk.Align.CENTER)
+
+        # Brand mark if available
+        mark = self._brand_mark(40)
+        mark.set_halign(Gtk.Align.CENTER)
+        box.append(mark)
+
+        title = Gtk.Label(label=APPLICATION_NAME)
+        title.add_css_class("loading-title")
+        title.set_halign(Gtk.Align.CENTER)
+        box.append(title)
+
+        spinner = Gtk.Spinner()
+        spinner.add_css_class("loading-spinner")
+        spinner.set_size_request(36, 36)
+        spinner.set_halign(Gtk.Align.CENTER)
+        spinner.start()
+        self._loading_spinner = spinner
+        box.append(spinner)
+
+        self._loading_label = Gtk.Label(label="Loading assets…")
+        self._loading_label.add_css_class("loading-status")
+        self._loading_label.set_halign(Gtk.Align.CENTER)
+        box.append(self._loading_label)
+        return box
+
+    def _start_bootstrap(self) -> bool:
+        """Begin background preload; keep loading UI visible until ready."""
+        if self._bootstrapped:
+            return False
+        from core.bootstrap import preload_assets
+
+        if hasattr(self, "_loading_label"):
+            self._loading_label.set_text("Loading map and Mullvad data…")
+
+        def on_done() -> None:
+            GLib.idle_add(self._finish_bootstrap)
+
+        def on_error(msg: str) -> None:
+            # Non-fatal — still open the app
+            if hasattr(self, "_loading_label"):
+                self._loading_label.set_text("Almost ready…")
+
+        preload_assets(on_done=on_done, on_error=on_error)
+        return False
+
+    def _finish_bootstrap(self) -> bool:
+        """Build rail + pages on the main thread after assets are cached."""
+        if self._bootstrapped:
+            return False
+        self._bootstrapped = True
+        if hasattr(self, "_loading_label"):
+            self._loading_label.set_text("Starting…")
+
+        try:
+            # Clear shell host and attach real UI
+            while (child := self._shell_host.get_first_child()) is not None:
+                self._shell_host.remove(child)
+            self._shell_host.append(self._build_rail())
+            self._shell_host.append(self._build_pages())
+            self._ready = True
+            self._navigate(DEFAULT_PAGE)
+            self._sync_chrome()
+            self._start_status_poll()
+            self._root_stack.set_visible_child_name("app")
+            if hasattr(self, "_loading_spinner"):
+                self._loading_spinner.stop()
+        except Exception as exc:
+            if hasattr(self, "_loading_label"):
+                self._loading_label.set_text(f"Failed to start: {exc}")
+            # Still try to show something
+            try:
+                self._ready = True
+                self._root_stack.set_visible_child_name("app")
+            except Exception:
+                pass
+        return False
 
     def _on_map(self, *_a) -> None:
         self._start_status_poll()

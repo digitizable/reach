@@ -1413,6 +1413,32 @@ list.boxed-list > row {
   border-top: 1px solid #222226;
 }
 
+/* Startup loading screen */
+.loading-screen {
+  background-color: #0d0d0d;
+  min-width: 280px;
+  min-height: 220px;
+  padding: 32px 40px;
+}
+
+.loading-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #f0f0f0;
+}
+
+.loading-spinner {
+  margin: 8px 0;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.loading-status {
+  font-size: 12px;
+  color: #8a8a8a;
+}
+
 .home-card {
   max-width: none;
   min-width: 0;
@@ -1421,4 +1447,9 @@ list.boxed-list > row {
   border: none;
   background: transparent;
   padding: 0;
+}
+
+spinner.loading-spinner {
+  color: #c8c8c8;
+  -gtk-icon-size: 36px;
 }
