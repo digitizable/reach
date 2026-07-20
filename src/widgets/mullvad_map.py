@@ -215,7 +215,8 @@ class MullvadMap(Gtk.Box):
         else:
             # Country: full bounding box of ALL cities so coasts stay in frame
             # (e.g. USA must include California and the East Coast).
-            pad = 18.0
+            # Small pad only — zoom a bit tighter without clipping markers.
+            pad = 12.0
             min_x, max_x = min(xs) - pad, max(xs) + pad
             min_y, max_y = min(ys) - pad, max(ys) + pad
             # Modest minimum span for tiny countries (1–2 cities)
@@ -226,8 +227,8 @@ class MullvadMap(Gtk.Box):
             if max_y - min_y < min_span_y:
                 mid = (min_y + max_y) / 2
                 min_y, max_y = mid - min_span_y / 2, mid + min_span_y / 2
-            # Fit whole country with a little margin; don't force extreme zoom
-            fill = 0.88
+            # Slightly tighter than before (was 0.88); still fits every city.
+            fill = 0.96
             min_scale, max_scale = 1.4, 12.0
 
         min_x = max(0.0, min_x)
