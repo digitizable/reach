@@ -48,8 +48,8 @@ class HomePage(Gtk.Box):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         card.add_css_class("home-card")
         card.set_halign(Gtk.Align.CENTER)
-        card.set_hexpand(False)
-        card.set_size_request(420, -1)
+        card.set_hexpand(True)
+        card.set_size_request(480, -1)
 
         # Status hero
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -72,9 +72,25 @@ class HomePage(Gtk.Box):
         self._detail.add_css_class("home-status-detail")
         self._detail.set_halign(Gtk.Align.CENTER)
         self._detail.set_justify(Gtk.Justification.CENTER)
-        self._detail.set_max_width_chars(42)
+        self._detail.set_max_width_chars(48)
         hero.append(self._detail)
         card.append(hero)
+
+        # World map (Mullvad relay cities) — real land outlines
+        self._mv_map = None
+        try:
+            from widgets.mullvad_map import MullvadMap
+
+            self._mv_map = MullvadMap(
+                height=240,
+                interactive=True,
+                on_toast=self._on_toast,
+                on_location=self._on_map_location,
+            )
+            self._mv_map.add_css_class("home-map")
+            card.append(self._mv_map)
+        except Exception:
+            self._mv_map = None
 
         # Path diagram in its own well (graph centered in the well)
         path_well = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -256,9 +272,29 @@ class HomePage(Gtk.Box):
             self._mv_status.set_text(st.summary or "")
             self._mv_box.set_visible(True)
             self._mv_ready = True
+            if self._mv_map is not None:
+                self._mv_map.set_active(country, city)
         finally:
             self._mv_block = False
         return False
+
+    def _on_map_location(self, country: str, city: str, city_name: str) -> None:
+        """Map click — refresh pickers to match Mullvad selection."""
+        if not self._mv_ready:
+            return
+        self._mv_block = True
+        try:
+            if country in self._mv_country_codes:
+                self._mv_country.set_selected(self._mv_country_codes.index(country))
+            self._reload_mv_cities(select_city=city, select_host="")
+            from core import mullvad as mv
+
+            st = mv.probe()
+            self._mv_status.set_text(
+                st.summary or f"{city_name} ({country}/{city})"
+            )
+        finally:
+            self._mv_block = False
 
     def _reload_mv_cities(
         self, *, select_city: str = "", select_host: str = ""
@@ -369,6 +405,11 @@ class HomePage(Gtk.Box):
             def done() -> bool:
                 if ok:
                     self._mv_status.set_text(st.summary or msg)
+                    if self._mv_map is not None:
+                        self._mv_map.set_active(
+                            country if country != "any" else "",
+                            city if city not in ("", "any") else "",
+                        )
                     if self._on_toast:
                         self._on_toast(msg if len(msg) < 80 else st.summary)
                 else:

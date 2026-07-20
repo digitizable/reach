@@ -10,4 +10,5 @@
 | Other files | Path marks (Tor/REALITY/Mullvad), etc. |
 
 **Mark:** [path-distance](https://game-icons.net/1x1/delapouite/path-distance.html) by Delapouite ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)).  
-Country outlines: [djaiss/mapsicon](https://github.com/djaiss/mapsicon). Fills normalized to `#ffffff` for dark UI.
+Country outlines: [djaiss/mapsicon](https://github.com/djaiss/mapsicon). Fills normalized to `#ffffff` for dark UI.  
+**world-land.json:** simplified land polygons for the Home Mullvad map (derived from [johan/world.geo.json](https://github.com/johan/world.geo.json), public domain / open data).

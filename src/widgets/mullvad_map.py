@@ -1,46 +1,26 @@
-"""Custom animated Mullvad relay viewport (DrawingArea).
+"""Custom animated Mullvad relay map viewport (real world land + city dots).
 
-Mullvad’s client is open source (GPL-3). City coordinates come from their
-public relay API. The map chrome is Reach’s own (no proprietary assets).
-
-- Equirectangular world viewport with soft land silhouettes
-- Continuous pulse animation via frame clock
-- Gentle fly-to when the active location changes
-- Click a city to set Mullvad relay location (when CLI is present)
+- Equirectangular land from simplified public-domain country outlines
+- Mullvad city markers (public API) with frame-clock pulse
+- Fly-to active location; click city to set Mullvad relay (GPL-3 CLI)
 """
 
 from __future__ import annotations
 
+import json
 import math
 import threading
 from collections.abc import Callable
+from functools import lru_cache
+from pathlib import Path
 
 from gi.repository import GLib, Gtk
 
+from app_config import project_root
 from core.mullvad import RelayCity, cli_path, load_catalog, set_location
 
-# Logical world map (equirectangular)
 _WORLD_W = 720.0
 _WORLD_H = 360.0
-
-# Soft land “blobs” (lon_w, lat_n, lon_e, lat_s) — stylized continents, not GIS
-_LAND_BOXES: tuple[tuple[float, float, float, float], ...] = (
-    # North America
-    (-130.0, 55.0, -60.0, 25.0),
-    (-120.0, 72.0, -80.0, 55.0),
-    # South America
-    (-80.0, 10.0, -35.0, -55.0),
-    # Europe
-    (-10.0, 60.0, 40.0, 36.0),
-    # Africa
-    (-18.0, 35.0, 50.0, -35.0),
-    # Asia
-    (40.0, 55.0, 145.0, 10.0),
-    (60.0, 70.0, 180.0, 45.0),
-    # Australia / NZ
-    (110.0, -10.0, 155.0, -45.0),
-    (165.0, -34.0, 179.0, -48.0),
-)
 
 
 def lonlat_to_world(lat: float, lon: float) -> tuple[float, float]:
@@ -49,19 +29,33 @@ def lonlat_to_world(lat: float, lon: float) -> tuple[float, float]:
     return x, y
 
 
-def world_to_lonlat(x: float, y: float) -> tuple[float, float]:
-    lon = x / _WORLD_W * 360.0 - 180.0
-    lat = 90.0 - y / _WORLD_H * 180.0
-    return lat, lon
+@lru_cache(maxsize=1)
+def load_land_polygons() -> tuple[float, float, list[list[tuple[float, float]]]]:
+    """Load simplified land outlines (equirectangular 720×360)."""
+    path = project_root() / "data" / "assets" / "world-land.json"
+    if not path.is_file():
+        return _WORLD_W, _WORLD_H, []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _WORLD_W, _WORLD_H, []
+    w = float(data.get("w") or _WORLD_W)
+    h = float(data.get("h") or _WORLD_H)
+    polys: list[list[tuple[float, float]]] = []
+    for ring in data.get("polys") or []:
+        pts = [(float(p[0]), float(p[1])) for p in ring if len(p) >= 2]
+        if len(pts) >= 3:
+            polys.append(pts)
+    return w, h, polys
 
 
 class MullvadMap(Gtk.Box):
-    """Animated relay-city viewport for Doors (and anywhere else)."""
+    """Animated world map with Mullvad relay cities."""
 
     def __init__(
         self,
         *,
-        height: int = 200,
+        height: int = 220,
         on_location: Callable[[str, str, str], None] | None = None,
         on_toast: Callable[[str], None] | None = None,
         interactive: bool = True,
@@ -69,7 +63,7 @@ class MullvadMap(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add_css_class("mullvad-map")
         self.set_hexpand(True)
-        self._height = max(140, height)
+        self._height = max(160, height)
         self._on_location = on_location
         self._on_toast = on_toast
         self._interactive = interactive
@@ -80,25 +74,27 @@ class MullvadMap(Gtk.Box):
         self._hover: RelayCity | None = None
         self._t0 = GLib.get_monotonic_time()
         self._busy = False
+        self._last_t = 0.0
 
-        # Camera (world units). Default full world.
-        self._cam_x = 0.0
-        self._cam_y = 0.0
+        # Camera focus in world coords + scale
+        self._cam_x = _WORLD_W / 2
+        self._cam_y = _WORLD_H / 2
         self._cam_scale = 1.0
-        self._target_x = 0.0
-        self._target_y = 0.0
+        self._target_x = self._cam_x
+        self._target_y = self._cam_y
         self._target_scale = 1.0
+
+        self._land_w, self._land_h, self._land = load_land_polygons()
 
         self._area = Gtk.DrawingArea()
         self._area.add_css_class("mullvad-map-viewport")
         self._area.set_content_height(self._height)
         self._area.set_hexpand(True)
-        self._area.set_vexpand(False)
         self._area.set_draw_func(self._draw)
-        self._area.set_cursor_from_name("pointer" if interactive else "default")
+        if interactive:
+            self._area.set_cursor_from_name("pointer")
         self.append(self._area)
 
-        # Motion for hover
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", self._on_motion)
         motion.connect("leave", self._on_leave)
@@ -120,12 +116,10 @@ class MullvadMap(Gtk.Box):
         GLib.idle_add(self._load_cities)
 
     def do_unrealize(self) -> None:
-        if self._tick_id:
+        if getattr(self, "_tick_id", 0):
             self._area.remove_tick_callback(self._tick_id)
             self._tick_id = 0
         Gtk.Box.do_unrealize(self)
-
-    # ── public API ────────────────────────────────────────────────
 
     def set_active(self, country: str = "", city: str = "") -> None:
         self._active_country = (country or "").lower()
@@ -137,12 +131,9 @@ class MullvadMap(Gtk.Box):
     def refresh(self) -> None:
         self._load_cities()
 
-    # ── data ──────────────────────────────────────────────────────
-
     def _load_cities(self) -> bool:
         try:
-            cat = load_catalog()
-            self._cities = list(cat.map_cities)
+            self._cities = list(load_catalog().map_cities)
         except Exception:
             self._cities = []
         self._update_caption()
@@ -154,25 +145,35 @@ class MullvadMap(Gtk.Box):
         n = len(self._cities)
         if self._hover is not None:
             h = self._hover
-            self._caption.set_text(f"{h.city_name}, {h.country_name} · click to select")
+            self._caption.set_text(
+                f"{h.city_name}, {h.country_name} · click to select"
+            )
             return
         if self._active_country and self._active_country != "any":
-            label = self._active_country.upper()
+            bits = [self._active_country.upper()]
             if self._active_city:
-                label = f"{self._active_city.upper()}, {label}"
+                # Prefer human city name if we have it
+                name = self._active_city.upper()
+                for c in self._cities:
+                    if (
+                        c.country_code == self._active_country
+                        and c.city_code == self._active_city
+                    ):
+                        name = c.city_name
+                        break
+                bits.insert(0, name)
             self._caption.set_text(
-                f"Mullvad · {label} · {n} cities · click a city to set relay"
+                f"Mullvad · {', '.join(bits)} · {n} cities · click to set relay"
             )
         else:
             self._caption.set_text(
-                f"Mullvad relay map · {n} cities · open-source client (GPL-3)"
+                f"Mullvad map · {n} cities · open-source client (GPL-3)"
             )
-
-    # ── camera ────────────────────────────────────────────────────
 
     def _fly_to_active(self) -> None:
         if not self._active_country or self._active_country == "any":
-            self._target_x, self._target_y = 0.0, 0.0
+            self._target_x = _WORLD_W / 2
+            self._target_y = _WORLD_H / 2
             self._target_scale = 1.0
             return
         matches = [
@@ -187,45 +188,30 @@ class MullvadMap(Gtk.Box):
             ]
         if not matches:
             return
-        # Centroid of matches
-        lats = [c.latitude for c in matches]
-        lons = [c.longitude for c in matches]
-        lat = sum(lats) / len(lats)
-        lon = sum(lons) / len(lons)
+        lat = sum(c.latitude for c in matches) / len(matches)
+        lon = sum(c.longitude for c in matches) / len(matches)
         wx, wy = lonlat_to_world(lat, lon)
-        # Zoom in a bit when city-level
-        scale = 2.4 if self._active_city else 1.7
-        # Camera is top-left of visible world window after scale
-        # Center (wx,wy) in view
-        self._target_scale = scale
-        # Store as focus point; applied in draw via transform
-        self._target_x = wx
-        self._target_y = wy
+        self._target_x, self._target_y = wx, wy
+        self._target_scale = 2.6 if self._active_city else 1.85
 
     def _ease_camera(self, dt: float) -> None:
-        # Exponential ease toward target focus / scale
-        k = min(1.0, 4.0 * dt)
+        k = min(1.0, 3.5 * dt)
         self._cam_scale += (self._target_scale - self._cam_scale) * k
         self._cam_x += (self._target_x - self._cam_x) * k
         self._cam_y += (self._target_y - self._cam_y) * k
 
-    # ── input ─────────────────────────────────────────────────────
-
     def _view_to_world(self, vx: float, vy: float) -> tuple[float, float]:
-        """Widget coords → world coords under current camera."""
         alloc = self._area.get_allocation()
         aw = max(1.0, float(alloc.width))
         ah = max(1.0, float(alloc.height))
-        # Uniform scale to fit world into widget, then camera zoom
         fit = min(aw / _WORLD_W, ah / _WORLD_H)
         s = fit * self._cam_scale
-        # World point under center of widget is (cam_x, cam_y)
         cx, cy = aw / 2.0, ah / 2.0
-        wx = self._cam_x + (vx - cx) / s
-        wy = self._cam_y + (vy - cy) / s
-        return wx, wy
+        return self._cam_x + (vx - cx) / s, self._cam_y + (vy - cy) / s
 
-    def _nearest_city(self, wx: float, wy: float, *, max_dist: float = 18.0) -> RelayCity | None:
+    def _nearest_city(
+        self, wx: float, wy: float, *, max_dist: float = 16.0
+    ) -> RelayCity | None:
         best: RelayCity | None = None
         best_d = max_dist
         for c in self._cities:
@@ -236,7 +222,7 @@ class MullvadMap(Gtk.Box):
                 best = c
         return best
 
-    def _on_motion(self, _c: Gtk.EventControllerMotion, x: float, y: float) -> None:
+    def _on_motion(self, _c, x: float, y: float) -> None:
         wx, wy = self._view_to_world(x, y)
         hit = self._nearest_city(wx, wy)
         if hit is not self._hover:
@@ -250,13 +236,15 @@ class MullvadMap(Gtk.Box):
             self._update_caption()
             self._area.queue_draw()
 
-    def _on_click(self, _g: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
-        if self._busy or not cli_path():
-            if self._on_toast and not cli_path():
+    def _on_click(self, _g, _n: int, x: float, y: float) -> None:
+        if self._busy:
+            return
+        if not cli_path():
+            if self._on_toast:
                 self._on_toast("Mullvad CLI not installed")
             return
         wx, wy = self._view_to_world(x, y)
-        city = self._nearest_city(wx, wy, max_dist=22.0)
+        city = self._nearest_city(wx, wy, max_dist=20.0)
         if city is None:
             return
         self._busy = True
@@ -278,7 +266,7 @@ class MullvadMap(Gtk.Box):
                             f"Mullvad · {city.city_name}, {city.country_name}"
                         )
                 else:
-                    self._caption.set_text(msg or "Could not set location")
+                    self._update_caption()
                     if self._on_toast:
                         self._on_toast(msg or "Mullvad location failed")
                 return False
@@ -287,12 +275,9 @@ class MullvadMap(Gtk.Box):
 
         threading.Thread(target=worker, name="mullvad-map-set", daemon=True).start()
 
-    # ── animation ─────────────────────────────────────────────────
-
-    def _on_tick(self, _widget: Gtk.Widget, frame_clock) -> bool:
-        # Ease camera + continuous redraw for pulse
+    def _on_tick(self, _widget, frame_clock) -> bool:
         t = frame_clock.get_frame_time() / 1_000_000.0
-        if not hasattr(self, "_last_t"):
+        if not self._last_t:
             self._last_t = t
         dt = max(0.0, min(0.05, t - self._last_t))
         self._last_t = t
@@ -300,22 +285,12 @@ class MullvadMap(Gtk.Box):
         self._area.queue_draw()
         return GLib.SOURCE_CONTINUE
 
-    # ── draw ──────────────────────────────────────────────────────
-
-    def _draw(
-        self,
-        area: Gtk.DrawingArea,
-        cr,  # cairo.Context
-        width: int,
-        height: int,
-        *_ud,
-    ) -> None:
-        aw = float(width)
-        ah = float(height)
+    def _draw(self, _area, cr, width: int, height: int, *_ud) -> None:
+        aw, ah = float(width), float(height)
         t = (GLib.get_monotonic_time() - self._t0) / 1_000_000.0
 
         # Ocean
-        cr.set_source_rgb(0.047, 0.047, 0.063)  # #0c0c10
+        cr.set_source_rgb(0.055, 0.07, 0.10)  # deep blue-gray
         cr.rectangle(0, 0, aw, ah)
         cr.fill()
 
@@ -326,45 +301,59 @@ class MullvadMap(Gtk.Box):
         def w2v(wx: float, wy: float) -> tuple[float, float]:
             return cx + (wx - self._cam_x) * s, cy + (wy - self._cam_y) * s
 
-        # Clip to rounded viewport (soft inset)
         cr.save()
-        radius = 10.0
+        radius = 12.0
         self._rounded_rect(cr, 1, 1, aw - 2, ah - 2, radius)
         cr.clip()
 
         # Graticule
-        cr.set_line_width(max(0.6, 0.6 * s / fit))
-        cr.set_source_rgba(0.16, 0.16, 0.19, 0.55)
+        cr.set_line_width(max(0.5, 0.5 * s / fit))
+        cr.set_source_rgba(0.25, 0.32, 0.38, 0.35)
         for lon in range(-180, 181, 30):
-            wx0, _ = lonlat_to_world(0, float(lon))
-            x0, _ = w2v(wx0, 0)
-            cr.move_to(x0, 0)
-            cr.line_to(x0, ah)
+            wx, _ = lonlat_to_world(0.0, float(lon))
+            x, _ = w2v(wx, 0)
+            cr.move_to(x, 0)
+            cr.line_to(x, ah)
             cr.stroke()
         for lat in range(-60, 61, 30):
-            _, wy0 = lonlat_to_world(float(lat), 0)
-            _, y0 = w2v(0, wy0)
-            cr.move_to(0, y0)
-            cr.line_to(aw, y0)
+            _, wy = lonlat_to_world(float(lat), 0.0)
+            _, y = w2v(0, wy)
+            cr.move_to(0, y)
+            cr.line_to(aw, y)
             cr.stroke()
 
-        # Land silhouettes
-        for lon_w, lat_n, lon_e, lat_s in _LAND_BOXES:
-            x0, y0 = lonlat_to_world(lat_n, lon_w)
-            x1, y1 = lonlat_to_world(lat_s, lon_e)
-            vx0, vy0 = w2v(min(x0, x1), min(y0, y1))
-            vx1, vy1 = w2v(max(x0, x1), max(y0, y1))
-            cr.set_source_rgba(0.10, 0.10, 0.13, 0.85)
-            self._rounded_rect(
-                cr, vx0, vy0, max(2, vx1 - vx0), max(2, vy1 - vy0), 6 * s / fit
-            )
-            cr.fill()
+        # Land — real country outlines
+        cr.set_source_rgb(0.14, 0.17, 0.20)  # muted land
+        for ring in self._land:
+            if len(ring) < 3:
+                continue
+            x0, y0 = w2v(ring[0][0], ring[0][1])
+            cr.move_to(x0, y0)
+            for px, py in ring[1:]:
+                x, y = w2v(px, py)
+                cr.line_to(x, y)
+            cr.close_path()
+        cr.fill()
 
-        # Cities
+        # Land edges for definition
+        cr.set_source_rgba(0.22, 0.28, 0.32, 0.55)
+        cr.set_line_width(max(0.4, 0.45 * s / fit))
+        for ring in self._land:
+            if len(ring) < 3:
+                continue
+            x0, y0 = w2v(ring[0][0], ring[0][1])
+            cr.move_to(x0, y0)
+            for px, py in ring[1:]:
+                x, y = w2v(px, py)
+                cr.line_to(x, y)
+            cr.close_path()
+            cr.stroke()
+
+        # Relay cities
         for i, city in enumerate(self._cities):
             wx, wy = lonlat_to_world(city.latitude, city.longitude)
             vx, vy = w2v(wx, wy)
-            if vx < -20 or vx > aw + 20 or vy < -20 or vy > ah + 20:
+            if vx < -16 or vx > aw + 16 or vy < -16 or vy > ah + 16:
                 continue
 
             is_active = (
@@ -373,32 +362,29 @@ class MullvadMap(Gtk.Box):
                 and (not self._active_city or city.city_code == self._active_city)
             )
             is_hover = self._hover is city
+            phase = math.sin(t * 2.1 + i * 0.41) * 0.5 + 0.5
 
-            # Phase: staggered pulse
-            phase = math.sin(t * 2.2 + i * 0.37) * 0.5 + 0.5  # 0..1
             if is_active:
-                phase = math.sin(t * 3.4) * 0.5 + 0.5
-                base_r = 4.5
-                r = base_r + phase * 2.8
-                # Outer glow ring
-                cr.set_source_rgba(0.85, 0.90, 1.0, 0.12 + phase * 0.18)
-                cr.arc(vx, vy, r * 2.2, 0, 2 * math.pi)
+                phase = math.sin(t * 3.2) * 0.5 + 0.5
+                r = 4.2 + phase * 2.4
+                cr.set_source_rgba(0.55, 0.85, 1.0, 0.15 + phase * 0.2)
+                cr.arc(vx, vy, r * 2.4, 0, 2 * math.pi)
                 cr.fill()
-                cr.set_source_rgba(0.94, 0.94, 0.96, 0.75 + phase * 0.25)
+                cr.set_source_rgba(0.95, 0.97, 1.0, 0.85 + phase * 0.15)
             elif is_hover:
-                r = 3.8 + phase * 0.8
-                cr.set_source_rgba(0.75, 0.85, 0.95, 0.9)
+                r = 3.6 + phase * 0.7
+                cr.set_source_rgba(0.85, 0.92, 1.0, 0.95)
             else:
-                r = 2.1 + phase * 0.7
-                cr.set_source_rgba(0.38, 0.52, 0.58, 0.45 + phase * 0.4)
+                r = 2.0 + phase * 0.65
+                cr.set_source_rgba(0.45, 0.72, 0.82, 0.5 + phase * 0.4)
 
             cr.arc(vx, vy, r, 0, 2 * math.pi)
             cr.fill()
 
         cr.restore()
 
-        # Soft vignette border
-        cr.set_source_rgba(0.15, 0.15, 0.18, 1.0)
+        # Frame
+        cr.set_source_rgba(0.18, 0.20, 0.24, 1.0)
         cr.set_line_width(1.0)
         self._rounded_rect(cr, 0.5, 0.5, aw - 1, ah - 1, radius)
         cr.stroke()
@@ -412,17 +398,3 @@ class MullvadMap(Gtk.Box):
         cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
         cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
         cr.close_path()
-
-
-# Keep name used by china_ingress / tests
-def build_map_svg(cities: list[RelayCity], **_kw) -> str:
-    """Legacy helper — minimal static SVG snapshot."""
-    dots = []
-    for c in cities:
-        x, y = lonlat_to_world(c.latitude, c.longitude)
-        dots.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="#6a8a9a"/>')
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_WORLD_W} {_WORLD_H}">'
-        f'<rect width="100%" height="100%" fill="#0c0c10"/>'
-        f'{"".join(dots)}</svg>'
-    )

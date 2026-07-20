@@ -8,7 +8,7 @@ from pathlib import Path
 
 APPLICATION_ID = "com.digitizable.reach"
 APPLICATION_NAME = "Reach"
-APPLICATION_VERSION = "0.4.5"
+APPLICATION_VERSION = "0.4.6"
 APPLICATION_ICON = APPLICATION_ID
 
 # Upstream for update checks (GitHub Releases)

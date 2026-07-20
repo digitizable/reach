@@ -119,24 +119,6 @@ class ChinaIngressPage(Gtk.Box):
         left.set_hexpand(False)
         left.set_vexpand(True)
         left.append(self._hero_territory())
-        # Custom animated Mullvad relay viewport (click city to set location)
-        try:
-            from widgets.mullvad_map import MullvadMap
-
-            self._mv_map = MullvadMap(
-                height=200,
-                interactive=True,
-                on_toast=self._toast,
-                on_location=self._on_map_location,
-            )
-            left.append(self._mv_map)
-            from core import mullvad as mv
-
-            if mv.cli_path():
-                cc, city, _ = mv.get_location_constraint()
-                self._mv_map.set_active(cc, city)
-        except Exception:
-            self._mv_map = None
         left.append(self._door_cards())
         left.append(self._path_diagram())
         left.append(self._group_readiness())
@@ -1085,11 +1067,6 @@ class ChinaIngressPage(Gtk.Box):
     def _nav(self, page_id: str) -> None:
         if self._on_navigate:
             self._on_navigate(page_id)
-
-    def _on_map_location(self, country: str, city: str, city_name: str) -> None:
-        """Mullvad map click — keep map highlight in sync."""
-        if getattr(self, "_mv_map", None) is not None:
-            self._mv_map.set_active(country, city)
 
     def _toast(self, msg: str) -> None:
         if self._on_toast:

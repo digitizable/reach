@@ -28,3 +28,8 @@ Project X, Xray, and REALITY names and marks belong to their respective owners.
 
 - **Client:** [mullvadvpn-app](https://github.com/mullvad/mullvadvpn-app) — **GPL-3.0**
 - **Use:** Reach drives the installed `mullvad` CLI for status, connect/disconnect, and relay location. The animated map uses Mullvad’s public relay location API (`api.mullvad.net`) for city coordinates. Reach does not ship Mullvad’s proprietary branding map assets; dots are generated in-app.
+
+## World land outlines (map)
+
+- **Source:** [johan/world.geo.json](https://github.com/johan/world.geo.json) (simplified for equirectangular display)
+- **Use:** `data/assets/world-land.json` land fill on the Home Mullvad map

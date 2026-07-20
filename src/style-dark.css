@@ -1347,26 +1347,32 @@ list.boxed-list > row {
 }
 
 .mullvad-map {
-  margin: 4px 0 10px;
+  margin: 12px 0 4px;
   padding: 0;
   background-color: transparent;
 }
 
 .mullvad-map-viewport {
-  min-height: 160px;
-  border-radius: 12px;
-  background-color: #0c0c10;
+  min-height: 200px;
+  border-radius: 14px;
+  background-color: #0e1218;
 }
 
 .mullvad-map-caption {
   font-size: 10px;
   color: #71717a;
   letter-spacing: 0.02em;
-  margin-top: 2px;
+  margin-top: 4px;
   padding: 0 4px;
 }
 
+.home-map {
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
 .home-card {
-  max-width: 480px;
-  min-width: 400px;
+  max-width: 560px;
+  min-width: 440px;
+  width: 100%;
 }
