@@ -1,115 +1,96 @@
 # Reach
 
 <p align="center">
-  <img src="data/assets/app-icon.png" alt="Reach" width="160"/>
+  <img src="data/assets/app-icon.png" alt="Reach" width="128"/>
 </p>
 
-<p align="center">
-  <strong>Path console for restricted networks.</strong><br/>
-  Lab packs for measurement · Hogwarts for C2.
-</p>
+**Reach** is a Linux desktop application for building and operating multi-hop network paths. It provides the operator interface: path profiles, adapter configuration, connection control, split-tunnel app rules, and optional plugins.
 
-**Reach** is a GTK 4 + libadwaita shell for composing multi-hop privacy paths and territory doors. It drives the [Spectre](https://github.com/digitizable/spectre) core (`spectred`). Optional **plugins** unlock research tools and C2 without bloating the default install.
+The path engine is **[Spectre](https://github.com/digitizable/spectre)** (`spectred`). Reach talks to it over a local Unix socket.
 
-Linux only for now · **v0.6.0**
-
-**Formerly Spectre Desktop** (config under `~/.config/spectre-desktop` migrates to `reach` on first run).
+**Platform:** Linux · **UI:** GTK 4 / libadwaita · **Version:** 0.6.0
 
 ---
 
-## Why plugins?
+## What it does
 
-| Profile | What you get |
-|---------|----------------|
-| **Core (default)** | Paths, adapters, territories, Mullvad map, kill switch, basic Tools |
-| **+ Lab packs** | Path fingerprint + lab companions (Settings → Plugins) |
-| **+ Marketplace** | **Hogwarts** (C2), Hello template, community `owner/repo` installs |
-
-### Marketplace & rail
-
-- **Sidebar → Plugins** — catalog, install from `owner/repo`, enable/disable, remove
-- **Expand the rail** (chevron at the bottom) — labels **Official** vs **Plugins**
-- Installed plugins that declare `nav` get their own sidebar page (GTK frontend)
-
-Plugin format: [docs/PLUGIN_SPEC.md](docs/PLUGIN_SPEC.md) · template: [examples/reach-plugin-hello](examples/reach-plugin-hello)
-
-Built-in lab packs toggle under **Settings → Plugins** (Privacy / Lab presets). Marketplace packages install into `~/.local/share/reach/plugins/`.
+| Area | Description |
+|------|-------------|
+| **Paths** | Ordered hops (VPN, Tor, VLESS+REALITY, SOCKS/HTTP proxy) as named profiles |
+| **Adapters** | Concrete backend instances (endpoints, credentials, WireGuard configs) |
+| **Home** | Connection status, path diagram, optional Mullvad exit map, Connect / Disconnect |
+| **Territories** | Region-oriented profiles and reverse / dial-out setups |
+| **Apps** | Clearnet / exclude-list split tunneling via network namespaces |
+| **Routing** | System routing and kill switch (implemented by Spectre) |
+| **Plugins** | Optional lab tools and operator plugins without enlarging the default install |
 
 ---
 
-## Features
+## Plugins
 
-### Core — path console
+Reach ships a small core. Extra capability is opt-in.
 
-- Multi-hop **profiles** bound to **adapters** (VPN, REALITY, Tor, proxy)
-- **Home**: status, path graph, Mullvad country/city map, Connect
-- **Territories**: host-in-region or peer dial-out (Inverse Snowflake class)
-- **Apps**: exclude-list split tunnel / clearnet netns
-- System routing + kill switch (via Spectre), tray lock, preflight
+| Layer | Contents |
+|-------|----------|
+| **Default** | Paths, adapters, Home, territories, apps, tray, basic diagnostics |
+| **Built-in packs** | Path fingerprint measurement; installer UI for companion tools (Settings → Plugins) |
+| **Marketplace** | GitHub installs (`owner/repo`) into `~/.local/share/reach/plugins/` |
 
-### Built-in packs — Settings → Plugins
+Official marketplace example: **[Hogwarts](https://github.com/digitizable/reach-plugin-hogwarts)** — command-and-control desk (agents, control plane, listeners, playbooks).
 
-| Pack | Role |
-|------|------|
-| **Path fingerprint** | Lab ΔRTT / path latency on live SOCKS (Laminar F2) |
-| **Lab companions** | Install surface for Drift, Mirage, Sounding, Laminar |
+Plugin format: [docs/PLUGIN_SPEC.md](docs/PLUGIN_SPEC.md). Template: [examples/reach-plugin-hello](examples/reach-plugin-hello).
 
-### Marketplace — install when needed
+**Posture (Settings → Plugins):**
 
-| Plugin | Role |
-|--------|------|
-| **[Hogwarts](https://github.com/digitizable/reach-plugin-hogwarts)** | **C2 for Reach** — channels, listeners, egress, playbooks |
-| **Hello** | Plugin template (`examples/reach-plugin-hello`) |
+1. **Privacy** — core path console only  
+2. **Lab** — fingerprint pack + companion installers (no C2 rail)  
+3. **Operate** — unlocks marketplace / operator plugins on the rail  
 
-Research engines stay separate; Reach orchestrates:
+---
+
+## Related components
+
+These are separate repositories. Reach does not embed them unless you install them.
 
 | Project | Role |
 |---------|------|
-| [Spectre](https://github.com/digitizable/spectre) | Multi-hop path core |
-| [Drift](https://github.com/digitizable/drift) | Inverse Snowflake / reverse pathing |
-| [Mirage](https://github.com/digitizable/mirage) | Probe-resistant cover |
-| [Sounding](https://github.com/digitizable/sounding) | Measurement lab |
-| [Laminar](https://github.com/digitizable/laminar) | Composition fingerprint measure |
-| [Hogwarts](https://github.com/digitizable/reach-plugin-hogwarts) | C2 console plugin |
-
----
-
-## Architecture
-
-| Responsibility | Owner |
-|----------------|--------|
-| UI, backends, profiles, plugins, readiness | **Reach** |
-| Live path, SOCKS, routing, kill switch | **spectred** (Spectre) |
-| Reverse / cover / measure engines | Lab companions (optional packs) |
-| C2 | **Hogwarts** (marketplace plugin) |
+| [Spectre](https://github.com/digitizable/spectre) | Path core: hops, local SOCKS, routing, kill switch |
+| [Drift](https://github.com/digitizable/drift) | Dial-out reverse agent and accept side |
+| [Mirage](https://github.com/digitizable/mirage) | REALITY cover in front of reverse accept |
+| [Sounding](https://github.com/digitizable/sounding) | Measurement utilities for faces and residual paths |
+| [Laminar](https://github.com/digitizable/laminar) | Multi-hop composition / fingerprint measurement |
+| [Hogwarts](https://github.com/digitizable/reach-plugin-hogwarts) | Optional C2 plugin for Reach |
 
 ```
-Reach (shell)
-  ├── Spectre core API
-  ├── Core Tools (always)
-  ├── Built-in packs → fingerprint · lab companions
-  └── Marketplace → Hogwarts (C2) · community plugins
+Reach (desktop UI)
+  └── spectred (Spectre) ── path, SOCKS, routing
+  └── optional plugins / lab companions
 ```
 
 ---
 
-## Install & run
+## Install
+
+**1. Spectre core**
 
 ```bash
-# Spectre core first
-cd ../spectre && ./install.sh
+cd /path/to/spectre && ./install.sh
+```
 
-# Reach
-cd ../reach   # or spectre-desktop checkout
+**2. Reach**
+
+```bash
 sudo apt install -y \
   python3 python3-venv python3-gi python3-gi-cairo \
   gir1.2-gtk-4.0 gir1.2-adw-1 \
   libadwaita-1-0 libgtk-4-1
+
+cd /path/to/reach
 ./install.sh
 reach
 ```
 
-Dev:
+**Development**
 
 ```bash
 python3 -m venv .venv --system-site-packages
@@ -117,77 +98,66 @@ source .venv/bin/activate
 python src/main.py
 ```
 
-| Default | Value |
-|---------|--------|
-| Socket | `$XDG_RUNTIME_DIR/spectre/spectre.sock` |
-| Config | `~/.config/reach/config.json` (`plugins_enabled`) |
+| Item | Default |
+|------|---------|
+| Core socket | `$XDG_RUNTIME_DIR/spectre/spectre.sock` |
+| Config | `~/.config/reach/config.json` |
 | Data | `~/.local/share/reach/` |
 
-### Enable lab packs & C2 (posture)
-
-1. **Settings → Plugins** — choose a preset, then **Save**:
-   - **Privacy** — core path console only (default; firewall / concealment users)
-   - **Lab** — path fingerprint + lab companions (still no C2 rail)
-   - **Operate** — lab packs + **Operate** rail (marketplace, Hogwarts, …)
-2. Or toggle **Enable Operate** alone to unlock marketplace without changing packs  
-3. **Operate → Plugins** — install **Hogwarts** for C2 (`digitizable/reach-plugin-hogwarts`)
-
----
-
-## Pages
-
-| Page | Role |
-|------|------|
-| **Home** | Status, path, Mullvad map, Connect |
-| **Paths** | Recipes + adapters (in-page panes) |
-| **Territories** | Region reach / peer dial-out |
-| **Apps** | Clearnet carve-outs |
-| **Tools** | Core diagnostics + built-in lab tools |
-| **Plugins** | Marketplace — official catalog & GitHub install |
-| **Settings** | **Hub** — plugins packs · core · network · privacy · … |
-
-Deep links: `paths:recipes`, `paths:adapters`, `settings:plugins`, …
-
----
-
-## Security note
-
-Plugins run as in-process Python UI. Only install repositories you trust. Hogwarts is dual-use C2 for infrastructure and engagements you control — not for unauthorized access.
-
----
-
-## Data
-
-| Path | Contents |
-|------|----------|
-| `~/.config/reach/config.json` | Settings, `plugins_enabled`, window, updates |
-| `~/.local/share/reach/backends.json` | Adapters |
-| `~/.local/share/reach/profiles.json` | Paths |
-| `~/.local/share/reach/plugins/` | Marketplace plugin installs |
-| `~/.local/share/reach/lab/` | Companion checkouts |
-| `~/.local/share/reach/desktop.log` | Optional log |
-
-Updates: Settings → Updates polls [GitHub Releases](https://github.com/digitizable/reach/releases).
+Migration: older **Spectre Desktop** settings under `~/.config/spectre-desktop` are moved to `~/.config/reach` on first run.
 
 Uninstall: `./uninstall.sh`.
 
 ---
 
-## Brand
+## UI map
 
-App icon: Creation of Adam hands. See [THIRD_PARTY_NOTICES.md](data/THIRD_PARTY_NOTICES.md).
+| Page | Purpose |
+|------|---------|
+| Home | Status, path graph, map, connect |
+| Paths | Profiles and adapters |
+| Territories | Regional / reverse setups |
+| Apps | Split-tunnel exclusions |
+| Tools | Diagnostics and enabled lab tools |
+| Plugins | Marketplace catalog and installs |
+| Settings | Core, network, privacy, plugins, updates |
 
-Homepage: [anguish.sh/projects/reach](https://anguish.sh/projects/reach)
+Deep links include `paths:recipes`, `paths:adapters`, `settings:plugins`.
 
 ---
 
-## Donate
+## Data layout
+
+| Path | Contents |
+|------|----------|
+| `~/.config/reach/config.json` | App settings and plugin enable flags |
+| `~/.local/share/reach/backends.json` | Adapters |
+| `~/.local/share/reach/profiles.json` | Path profiles |
+| `~/.local/share/reach/plugins/` | Installed marketplace plugins |
+| `~/.local/share/reach/lab/` | Optional companion checkouts |
+| `~/.local/share/reach/desktop.log` | Application log (if enabled) |
+
+Updates: Settings → Updates checks [GitHub Releases](https://github.com/digitizable/reach/releases).
+
+---
+
+## Security
+
+- Plugins load as in-process Python UI. Install only repositories you trust.
+- Operator plugins (including Hogwarts) are for systems and engagements you are authorized to control.
+- Network paths and kill-switch behavior depend on Spectre and host privileges; misconfiguration can block connectivity or leak traffic—verify with your own tests before relying on a setup.
+
+---
+
+## Project
+
+- Homepage: [anguish.sh/projects/reach](https://anguish.sh/projects/reach)
+- Third-party notices: [data/THIRD_PARTY_NOTICES.md](data/THIRD_PARTY_NOTICES.md)
+- License: [GNU GPLv3](LICENSE)
+
+### Donate
 
 | | Address |
 |--|---------|
 | **BTC** | `sp1qqgly4w3je7m64xh72047u04hwyflyqqf3rfmxchmyht5dndpas4txqsuj9e0jc9l3yql9c3k5el3quyxfh6kr6c9zplmaavj59kuk5kny5jf7cjr` |
 | **XMR** | `89SWJrVXxEgHNiVNSEdjWsXMtRzpzoUX7ebToit9x7iuQADTZh5BGVjTywoQ4gn3SuSEzDhXpCEybi17HpwgYs7v2Xfjdue` |
-
-## License
-
-[GNU GPLv3](LICENSE)
