@@ -1,4 +1,4 @@
-"""Settings — dashboard of section tiles; each opens a sub-page."""
+"""Settings — preference tiles only (session control stays on Home / tray)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ _SECTIONS: tuple[_Section, ...] = (
     _Section(
         "plugins",
         "Plugins",
-        "Privacy · Lab · Operate posture",
+        "Posture · packs · Operate",
         "application-x-addon-symbolic",
     ),
     _Section(
@@ -42,7 +42,7 @@ _SECTIONS: tuple[_Section, ...] = (
     _Section(
         "session",
         "Session",
-        "Startup · tray · notifications",
+        "Startup · tray · notify",
         "system-run-symbolic",
     ),
     _Section(
@@ -54,26 +54,26 @@ _SECTIONS: tuple[_Section, ...] = (
     _Section(
         "privacy",
         "Privacy",
-        "WebRTC · path gate · UDP policy",
+        "WebRTC · UDP · Operate gate",
         "security-high-symbolic",
     ),
     _Section(
         "mullvad",
         "Mullvad",
-        "Optional underlay control",
+        "App tunnel · SOCKS hops only",
         "network-vpn-symbolic",
         asset="mullvad.png",
     ),
     _Section(
         "updates",
         "Updates",
-        "GitHub release checks",
+        "GitHub checks",
         "software-update-available-symbolic",
     ),
     _Section(
         "logging",
         "Logging",
-        "Level · file output",
+        "Level · file",
         "utilities-terminal-symbolic",
     ),
     _Section(
@@ -159,7 +159,7 @@ class SettingsPage(Gtk.Box):
         t.add_css_class("pane-header-title")
         titles.append(t)
         sub = Gtk.Label(
-            label="Pick a category",
+            label="Preferences · Save applies",
             xalign=0,
         )
         sub.add_css_class("pane-header-sub")
@@ -457,15 +457,13 @@ class SettingsPage(Gtk.Box):
     def _group_core(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Spectre core")
-        g.set_description(
-            "How Reach talks to the path engine (spectred). "
-            f"Default socket: {default_socket_path()}"
-        )
+        g.set_description(f"spectred · default {default_socket_path()}")
 
-        self._socket = Adw.EntryRow(title="Socket path (empty = default)")
+        self._socket = Adw.EntryRow(title="Socket path")
         self._socket.set_text(self._cfg.core_socket)
         if hasattr(self._socket, "set_show_apply_button"):
             self._socket.set_show_apply_button(False)
+        self._socket.set_tooltip_text("Empty = default socket")
         g.add(self._socket)
 
         self._token = Adw.PasswordEntryRow(title="API token")
@@ -474,7 +472,7 @@ class SettingsPage(Gtk.Box):
 
         self._timeout = Adw.SpinRow(
             title="Request timeout",
-            subtitle="Seconds to wait for core replies",
+            subtitle="Seconds",
             adjustment=Gtk.Adjustment(
                 value=self._cfg.core_timeout_sec,
                 lower=1,
@@ -487,14 +485,14 @@ class SettingsPage(Gtk.Box):
 
         self._reconnect = Adw.SwitchRow(
             title="Auto-reconnect",
-            subtitle="Retry the path if the core drops the session",
+            subtitle="Retry if core drops the session",
         )
         self._reconnect.set_active(self._cfg.reconnect_auto)
         g.add(self._reconnect)
 
         self._reconnect_delay = Adw.SpinRow(
             title="Reconnect delay",
-            subtitle="Seconds between reconnect attempts",
+            subtitle="Seconds between attempts",
             adjustment=Gtk.Adjustment(
                 value=self._cfg.reconnect_delay_sec,
                 lower=1,
@@ -509,41 +507,39 @@ class SettingsPage(Gtk.Box):
     def _group_session(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Session")
-        g.set_description(
-            "Startup and path selection. Path policy is applied when you Connect."
-        )
+        g.set_description("Startup / tray prefs · Connect stays on Home")
 
         self._auto_connect = Adw.SwitchRow(
             title="Connect on launch",
-            subtitle="Bring up the last profile when the app starts (core required)",
+            subtitle="Last path at startup",
         )
         self._auto_connect.set_active(self._cfg.auto_connect)
         g.add(self._auto_connect)
 
         self._start_min = Adw.SwitchRow(
             title="Start minimized",
-            subtitle="Open in the background / tray when available",
+            subtitle="Background / tray",
         )
         self._start_min.set_active(self._cfg.start_minimized)
         g.add(self._start_min)
 
         self._tray = Adw.SwitchRow(
             title="Show tray icon",
-            subtitle="Panel applet for status and quick Connect / Disconnect",
+            subtitle="Panel · same as Home Connect",
         )
         self._tray.set_active(self._cfg.tray_enabled)
         g.add(self._tray)
 
         self._close_tray = Adw.SwitchRow(
             title="Close to tray",
-            subtitle="Window close hides Spectre; quit from the tray menu",
+            subtitle="Hide window · quit from tray",
         )
         self._close_tray.set_active(self._cfg.close_to_tray)
         g.add(self._close_tray)
 
         self._notify = Adw.SwitchRow(
             title="Notify on disconnect",
-            subtitle="Desktop notification when the path goes down",
+            subtitle="Desktop notice when path drops",
         )
         self._notify.set_active(self._cfg.notify_on_disconnect)
         g.add(self._notify)
@@ -552,14 +548,12 @@ class SettingsPage(Gtk.Box):
     def _group_updates(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Updates")
-        g.set_description(
-            f"Check GitHub Releases for Reach "
-            f"({GITHUB_URL}). Current version: {APPLICATION_VERSION}"
-        )
+        g.set_description(f"v{APPLICATION_VERSION} · no auto-install")
+        g.set_tooltip_text(f"GitHub Releases · {GITHUB_URL}")
 
         self._check_updates = Adw.SwitchRow(
-            title="Check for updates automatically",
-            subtitle="Query GitHub in the background on a schedule (no auto-install)",
+            title="Check automatically",
+            subtitle="Background schedule",
         )
         self._check_updates.set_active(self._cfg.check_for_updates)
         g.add(self._check_updates)
@@ -567,7 +561,7 @@ class SettingsPage(Gtk.Box):
         interval = self._cfg.update_check_interval_hours or DEFAULT_CHECK_INTERVAL_HOURS
         self._update_interval = Adw.SpinRow(
             title="Check interval",
-            subtitle="Hours between automatic checks",
+            subtitle="Hours",
             adjustment=Gtk.Adjustment(
                 value=max(1, int(interval)),
                 lower=1,
@@ -580,9 +574,7 @@ class SettingsPage(Gtk.Box):
 
         check_row = Adw.ActionRow(title="Check now")
         last = (self._cfg.last_update_check or "").strip()
-        check_row.set_subtitle(
-            f"Last check: {last}" if last else "Not checked yet this install"
-        )
+        check_row.set_subtitle(f"Last · {last}" if last else "Never")
         self._last_check_row = check_row
         btn = Gtk.Button(label="Check")
         btn.set_valign(Gtk.Align.CENTER)
@@ -606,7 +598,7 @@ class SettingsPage(Gtk.Box):
         last = (self._services.config.last_update_check or "").strip()
         if hasattr(self, "_last_check_row"):
             self._last_check_row.set_subtitle(
-                f"Last check: {last}" if last else "Not checked yet this install"
+                f"Last · {last}" if last else "Never"
             )
 
     def _apply_update_fields(self) -> None:
@@ -620,20 +612,16 @@ class SettingsPage(Gtk.Box):
         from core import mullvad as mv
 
         g = Adw.PreferencesGroup()
-        g.set_title("Optional: Mullvad")
-        g.set_description(
-            "Only relevant if a path hop uses Mullvad’s in-tunnel SOCKS "
-            "(10.64.0.1). Other providers use a normal VPN/Proxy backend — "
-            "you can ignore this section."
-        )
+        g.set_title("Mullvad app")
+        g.set_description("Only if a hop uses Mullvad SOCKS · not path Connect")
 
         st = mv.probe()
         if not st.available:
-            status_sub = "CLI not installed — integration inactive"
+            status_sub = "CLI missing"
         elif st.connected:
             status_sub = st.summary
         else:
-            status_sub = "CLI installed · idle (not used unless a hop needs it)"
+            status_sub = "CLI ready · idle"
         self._mv_status = Adw.ActionRow(
             title="CLI status",
             subtitle=status_sub,
@@ -641,26 +629,30 @@ class SettingsPage(Gtk.Box):
         g.add(self._mv_status)
 
         self._mv_auto = Adw.SwitchRow(
-            title="Auto-manage when path needs it",
-            subtitle="If the active path uses Mullvad SOCKS: connect the "
-            "Mullvad app before Spectre Connect, and disconnect it with "
-            "Spectre Disconnect. No effect for other paths.",
+            title="Auto-manage with path",
+            subtitle="Start/stop app around Home Connect (SOCKS hops only)",
         )
         self._mv_auto.set_active(self._cfg.mullvad_auto_connect)
+        self._mv_auto.set_tooltip_text(
+            "When the active path uses Mullvad SOCKS: start the app before "
+            "Home Connect, stop it with Home Disconnect. No effect otherwise."
+        )
         g.add(self._mv_auto)
 
-        row = Adw.ActionRow(title="Manual tunnel control")
-        row.set_subtitle("Requires the mullvad CLI in PATH")
-        btn_on = Gtk.Button(label="Connect")
+        row = Adw.ActionRow(title="Manual tunnel")
+        row.set_subtitle("mullvad CLI · separate from Home")
+        btn_on = Gtk.Button(label="Start app")
         btn_on.set_valign(Gtk.Align.CENTER)
         btn_on.add_css_class("suggested-action")
         btn_on.set_sensitive(st.available)
+        btn_on.set_tooltip_text("mullvad connect — not Home Connect")
         btn_on.connect("clicked", self._on_mullvad_connect)
         row.add_suffix(btn_on)
-        btn_off = Gtk.Button(label="Disconnect")
+        btn_off = Gtk.Button(label="Stop app")
         btn_off.set_valign(Gtk.Align.CENTER)
         btn_off.add_css_class("flat")
         btn_off.set_sensitive(st.available)
+        btn_off.set_tooltip_text("mullvad disconnect — not Home Disconnect")
         btn_off.connect("clicked", self._on_mullvad_disconnect)
         row.add_suffix(btn_off)
         g.add(row)
@@ -668,10 +660,10 @@ class SettingsPage(Gtk.Box):
 
     def _mv_status_subtitle(self, st) -> str:
         if not st.available:
-            return "CLI not installed — integration inactive"
+            return "CLI missing"
         if st.connected:
             return st.summary
-        return "CLI installed · idle (not used unless a hop needs it)"
+        return "CLI ready · idle"
 
     def _on_mullvad_connect(self, *_a) -> None:
         import threading
@@ -681,7 +673,7 @@ class SettingsPage(Gtk.Box):
         from core import mullvad as mv
 
         if self._on_toast:
-            self._on_toast("Connecting Mullvad…")
+            self._on_toast("Starting Mullvad app…")
 
         def worker() -> None:
             st = mv.ensure_connected(timeout_sec=45.0)
@@ -730,11 +722,7 @@ class SettingsPage(Gtk.Box):
     def _group_network(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Network")
-        g.set_description(
-            "How traffic uses the path when connected. "
-            "Changes apply after you disconnect and Connect again. "
-            "If the network freezes: spectre unlock"
-        )
+        g.set_description("Re-Connect on Home after changes · freeze? spectre unlock")
 
         self._routing = Adw.ComboRow(title="Routing mode")
         self._routing.set_model(
@@ -747,31 +735,35 @@ class SettingsPage(Gtk.Box):
         )
         mode = (self._cfg.routing_mode or "system").lower()
         self._routing.set_selected(1 if mode == "apps" else 0)
-        self._routing.set_subtitle(
-            "Entire system (recommended): all traffic via Spectre after Connect; "
-            "use Exclude apps to carve out clearnet (clearnet netns / exclude "
-            "marks). Selected apps only: no system redirect — only manual SOCKS "
-            "clients use Spectre; kill switch is not applied."
+        self._routing.set_subtitle("System: all traffic · Apps: clearnet carve-out")
+        self._routing.set_tooltip_text(
+            "Entire system: all traffic via Spectre after Home Connect; "
+            "Apps page carves out clearnet. Selected apps only: no system "
+            "redirect — SOCKS clients only; kill switch off."
         )
         g.add(self._routing)
 
         self._kill = Adw.SwitchRow(
             title="Kill switch",
-            subtitle="System mode only: block clearnet bypass (needs spectre setup-killswitch once)",
+            subtitle="System mode · needs setup-killswitch once",
         )
         self._kill.set_active(self._cfg.kill_switch)
+        self._kill.set_tooltip_text(
+            "Blocks clearnet bypass in system routing mode. "
+            "Run spectre setup-killswitch once if not already set up."
+        )
         g.add(self._kill)
 
         self._ipv6 = Adw.SwitchRow(
             title="Block IPv6",
-            subtitle="Avoid IPv6 leaks outside the path",
+            subtitle="Stop IPv6 leaks off-path",
         )
         self._ipv6.set_active(self._cfg.block_ipv6)
         g.add(self._ipv6)
 
         self._lan = Adw.SwitchRow(
             title="Allow LAN",
-            subtitle="Permit local network access while the path is up",
+            subtitle="Local net while path is up",
         )
         self._lan.set_active(self._cfg.allow_lan)
         g.add(self._lan)
@@ -784,22 +776,24 @@ class SettingsPage(Gtk.Box):
         self._dns_mode.set_selected(
             modes.get(self._cfg.dns_mode.lower(), 1)
         )
-        self._dns_mode.set_subtitle(
-            "Remote/Custom: system DNS via the path. For Mullvad, use "
-            "10.64.0.1 only (tunnel DNS). Public resolvers (1.1.1.1, …) make "
-            "mullvad.net/check report a DNS “leak” even when traffic is tunneled."
+        self._dns_mode.set_subtitle("Prefer path DNS · Mullvad: 10.64.0.1")
+        self._dns_mode.set_tooltip_text(
+            "Remote/Custom: DNS via the path. For Mullvad use 10.64.0.1 only. "
+            "Public resolvers (1.1.1.1, …) make mullvad.net/check report a DNS "
+            "“leak” even when traffic is tunneled."
         )
         g.add(self._dns_mode)
 
-        self._dns_servers = Adw.EntryRow(title="DNS servers (remote / custom)")
+        self._dns_servers = Adw.EntryRow(title="DNS servers")
         self._dns_servers.set_text(self._cfg.dns_servers)
         if hasattr(self._dns_servers, "set_show_apply_button"):
             self._dns_servers.set_show_apply_button(False)
+        self._dns_servers.set_tooltip_text("Used for Remote / Custom modes")
         g.add(self._dns_servers)
 
         self._leak = Adw.SwitchRow(
             title="Leak guard",
-            subtitle="Extra checks against DNS / IP leaks",
+            subtitle="Extra DNS / IP checks",
         )
         self._leak.set_active(self._cfg.leak_guard)
         g.add(self._leak)
@@ -808,39 +802,33 @@ class SettingsPage(Gtk.Box):
     def _group_privacy(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Privacy")
-        g.set_description(
-            "Desktop policy for adapters, browsers, and sensitive Operate work"
-        )
+        g.set_description("Desktop policy · Operate gate")
 
         self._webrtc = Adw.SwitchRow(
             title="Discourage WebRTC leaks",
-            subtitle="Prefer configs that keep WebRTC off-path",
+            subtitle="Prefer off-path WebRTC",
         )
         self._webrtc.set_active(self._cfg.block_webrtc)
         g.add(self._webrtc)
 
         self._udp = Adw.SwitchRow(
             title="Block non-tunnel UDP",
-            subtitle="Aggressive: may break some apps until core supports it",
+            subtitle="Aggressive · may break apps",
         )
         self._udp.set_active(self._cfg.block_udp_non_tunnel)
         g.add(self._udp)
 
         # Default ON for path requirement ⇒ switch shows "allow without path" OFF
         self._allow_sensitive_no_path = Adw.SwitchRow(
-            title="Allow sensitive operations without a path",
-            subtitle=(
-                "Off (recommended): Operate plugins, agents, and marketplace "
-                "require an active Connect (VPN/privacy path). "
-                "On: permit that work on clearnet — confirmation required."
-            ),
+            title="Allow sensitive ops without path",
+            subtitle="Off recommended · Operate needs Home Connect",
         )
         self._allow_sensitive_no_path.set_active(
             bool(getattr(self._cfg, "allow_sensitive_without_path", False))
         )
         self._allow_sensitive_no_path.set_tooltip_text(
-            "Sensitive work (C2 agents, operator plugins) can leak identity "
-            "without a path. Keep this off unless you accept that risk."
+            "Off: Operate plugins need a path up via Home Connect. "
+            "On: clearnet allowed after confirmation — identity risk."
         )
         self._sensitive_gate_guard = False
         self._allow_sensitive_no_path.connect(
@@ -869,10 +857,8 @@ class SettingsPage(Gtk.Box):
             transient_for=parent,
             heading="Allow sensitive work without a path?",
             body=(
-                "Operate tools (including agent control and marketplace plugins) "
-                "will be usable while disconnected from any VPN or privacy path.\n\n"
-                "Traffic may leave this machine on clearnet and can expose your "
-                "identity or location. Only continue if you accept that risk."
+                "Operate tools work while disconnected.\n\n"
+                "Clearnet can expose identity. Continue only if you accept that."
             ),
         )
         dialog.add_response("cancel", "Cancel")
@@ -896,7 +882,7 @@ class SettingsPage(Gtk.Box):
     def _group_logging(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Logging")
-        g.set_description("Diagnostics for shell and core")
+        g.set_description("Shell + core diagnostics")
 
         self._log_level = Adw.ComboRow(title="Log level")
         self._log_level.set_model(
@@ -910,7 +896,7 @@ class SettingsPage(Gtk.Box):
 
         self._log_file = Adw.SwitchRow(
             title="Log to file",
-            subtitle="Write logs under the user data directory",
+            subtitle="User data directory",
         )
         self._log_file.set_active(self._cfg.log_to_file)
         g.add(self._log_file)
@@ -919,7 +905,7 @@ class SettingsPage(Gtk.Box):
     def _group_advanced(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Advanced")
-        g.set_description("Low-level knobs passed through to the core when available")
+        g.set_description("Passed to core when supported")
 
         self._bind = Adw.EntryRow(title="Local bind address")
         self._bind.set_text(self._cfg.bind_address)
@@ -927,7 +913,7 @@ class SettingsPage(Gtk.Box):
 
         self._mtu = Adw.SpinRow(
             title="MTU",
-            subtitle="Path MTU hint (common: 1280–1500)",
+            subtitle="Hint · often 1280–1500",
             adjustment=Gtk.Adjustment(
                 value=self._cfg.mtu,
                 lower=576,
@@ -954,10 +940,7 @@ class SettingsPage(Gtk.Box):
         box.add_css_class("settings-plugins")
 
         intro = Gtk.Label(
-            label=(
-                "Path console by default. Lab packs add measurement. "
-                "Operate unlocks marketplace tools (Hogwarts C2) on the rail."
-            ),
+            label="Presets · packs · Operate rail · Save to apply",
             wrap=True,
             xalign=0,
         )
@@ -967,7 +950,7 @@ class SettingsPage(Gtk.Box):
 
         # Active configuration (emphasized) — not the preset buttons
         active_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        active_lab = Gtk.Label(label="Active configuration", xalign=0)
+        active_lab = Gtk.Label(label="Active", xalign=0)
         active_lab.add_css_class("section-label")
         active_row.append(active_lab)
         self._plugins_summary = Gtk.Label(xalign=0, wrap=True)
@@ -976,7 +959,7 @@ class SettingsPage(Gtk.Box):
         box.append(active_row)
 
         # Presets — plain actions (no permanent "suggested" highlight)
-        preset_lab_w = Gtk.Label(label="Apply preset", xalign=0)
+        preset_lab_w = Gtk.Label(label="Preset", xalign=0)
         preset_lab_w.add_css_class("section-label")
         box.append(preset_lab_w)
 
@@ -995,9 +978,9 @@ class SettingsPage(Gtk.Box):
             btn.add_css_class("settings-plugins-preset-btn")
             btn.set_tooltip_text(
                 {
-                    "Privacy": "Core path console only — no packs, no Operate rail",
-                    "Lab": "Path fingerprint + lab companions (still no C2 rail)",
-                    "Operate": "Lab packs + Operate rail (marketplace, Hogwarts, …)",
+                    "Privacy": "Path console only · no packs · no Operate rail",
+                    "Lab": "Fingerprint + lab companions · no C2 rail",
+                    "Operate": "Lab packs + Operate rail (marketplace, Hogwarts)",
                 }[label]
             )
             btn.connect(
@@ -1012,20 +995,17 @@ class SettingsPage(Gtk.Box):
 
         # Operate suite master switch
         op_g = Adw.PreferencesGroup()
-        op_g.set_title("Operate suite")
-        op_g.set_description(
-            "When on: Plugins marketplace and C2 tools appear under Operate on the "
-            "left rail. Path pages stay primary either way."
-        )
+        op_g.set_title("Operate")
+        op_g.set_description("Rail · marketplace / C2 · path pages stay primary")
         self._operate_switch = Adw.SwitchRow(
             title="Enable Operate",
-            subtitle="Marketplace · Hogwarts · future operator plugins",
+            subtitle="Marketplace · Hogwarts",
         )
         self._operate_switch.set_active(
             bool(getattr(self._cfg, "operate_enabled", False))
         )
         self._operate_switch.set_tooltip_text(
-            "Off = path console (Privacy/Lab). On = unlock operator tools on the rail."
+            "Off = path console. On = operator tools on the rail."
         )
         self._operate_switch.connect(
             "notify::active",
@@ -1037,16 +1017,13 @@ class SettingsPage(Gtk.Box):
         # Catalog
         g = Adw.PreferencesGroup()
         g.set_title("Built-in packs")
-        g.set_description(
-            "Lab measurement packs. Toggle, then Save. "
-            "Marketplace plugins install from the Operate → Plugins page."
-        )
+        g.set_description("Toggle · Save · install more under Plugins")
         enabled = set(normalize_enabled(self._cfg.plugins_enabled))
         self._plugin_switches.clear()
         for p in PLUGINS:
             row = Adw.SwitchRow(
                 title=p.title,
-                subtitle=f"Lab · {p.tagline}",
+                subtitle=p.tagline,
             )
             row.set_active(p.id in enabled)
             row.set_tooltip_text(p.description)
@@ -1072,7 +1049,7 @@ class SettingsPage(Gtk.Box):
             from core.plugins import enabled_summary
 
             self._on_toast(
-                f"Preset · {enabled_summary(ids, operate_enabled=operate)} (Save to apply)"
+                f"Preset · {enabled_summary(ids, operate_enabled=operate)} · Save"
             )
 
     def _collect_plugins_enabled(self) -> list[str]:

@@ -1,4 +1,4 @@
-"""Home — status, path map, connect/disconnect only."""
+"""Home — sole owner of path Connect / Disconnect (plus status + map)."""
 
 from __future__ import annotations
 

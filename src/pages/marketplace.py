@@ -46,7 +46,7 @@ class MarketplacePage(Gtk.Box):
         self.append(
             page_header(
                 "Plugins",
-                subtitle="Operate suite · Hogwarts C2 · community",
+                subtitle="Install packs · not path Connect",
                 end=refresh,
             )
         )

@@ -1,23 +1,21 @@
-"""Reach — territory ingress UI (outside → target-side host).
+"""Territories — unique region ingress config only (no path Connect).
 
 China is the default territory (deep research pack). Same doors everywhere:
 Composition I inbound, Composition III Inverse Snowflake dial-out.
+Save writes a recipe; Connect / Disconnect live on Home (and tray).
 Plan: docs/CHINA_INGRESS.md (CN-specific notes); model generalizes to any territory.
 """
 
 from __future__ import annotations
 
 import json
-import socket
-import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from gi.repository import Adw, Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import Adw, Gdk, GdkPixbuf, Gtk
 
 from app_config import project_root, user_data_dir
 from core.backends import PROXY_PROTOCOLS, Backend
-from core.client import CoreState
 from core.profiles import Hop, Profile
 from core.readiness import is_mullvad_app_socks, is_vpn_underlay
 from core.reverse_agent import (
@@ -44,7 +42,7 @@ from core.territories import (
 )
 from core.vless import parse_vless_uri
 from services import Services
-from widgets.chrome import clear_box, page_header, scroll_body
+from widgets.chrome import clear_box, scroll_body
 
 STUDY_URL_CN = "https://anguish.sh/studies/reaching-into-china-from-outside"
 IMPL_PLAN = "docs/CHINA_INGRESS.md"
@@ -81,8 +79,6 @@ class ChinaIngressPage(Gtk.Box):
         self._on_navigate = on_navigate
         self._bound_backend_id: str | None = None
         self._bound_profile_id: str | None = None
-        self._action_busy = False
-        self._probe_busy = False
         self._territory_code = DEFAULT_TERRITORY_CODE
 
         # Nested sub-pages (main setup · readiness detail) without new rail items
@@ -109,7 +105,7 @@ class ChinaIngressPage(Gtk.Box):
         self._page_title.set_hexpand(True)
         self._page_title.set_valign(Gtk.Align.CENTER)
         self._page_sub = Gtk.Label(
-            label="Pick a region, choose how you reach it",
+            label="Region · door · setup · connect",
             xalign=0,
         )
         self._page_sub.add_css_class("pane-header-sub")
@@ -171,7 +167,7 @@ class ChinaIngressPage(Gtk.Box):
         cfg_head.add_css_class("section-label")
         right.append(cfg_head)
         cfg_sub = Gtk.Label(
-            label="Only the fields this mode needs. Save, then Connect on Home.",
+            label="Unique ingress setup · Save → path on Home",
             xalign=0,
             wrap=True,
         )
@@ -210,7 +206,7 @@ class ChinaIngressPage(Gtk.Box):
         g.set_title("")
         g.set_description("")
         self._territory_row = Adw.ComboRow(title="Region")
-        self._territory_row.set_subtitle("Where you need a path to land")
+        self._territory_row.set_subtitle("")
         self._territory_row.set_model(Gtk.StringList.new(territory_labels()))
         # CN is index 0
         self._territory_row.set_selected(0)
@@ -233,22 +229,23 @@ class ChinaIngressPage(Gtk.Box):
         """Refresh user-visible copy for the selected territory."""
         t = self._territory()
         self._page_title.set_text("Territories")
-        self._page_sub.set_text(f"Reaching {t.short_name} from outside")
+        self._page_sub.set_text(f"{t.short_name} · outside → inside")
         if hasattr(self, "_banner_title"):
             self._banner_title.set_text(t.short_name)
         if hasattr(self, "_banner_text"):
-            self._banner_text.set_text(
-                f"{t.blurb} Always go in under a VPN — never clearnet."
-            )
+            # One short rule — long research copy lives in Study link
+            self._banner_text.set_text(t.blurb)
         # Update mode card copy if present
         ib = getattr(self, "_door_inbound_btn", None)
         if ib is not None and hasattr(ib, "_door_body"):
-            ib._door_body.set_text(f"You control a host in {t.short_name}")
-            ib._door_hint.set_text("VPN first, then REALITY or proxy")
+            ib._door_body.set_text(f"Host you control in {t.short_name}")
+            if hasattr(ib, "_door_hint") and ib._door_hint is not None:
+                ib._door_hint.set_visible(False)
         rb = getattr(self, "_door_reverse_btn", None)
         if rb is not None and hasattr(rb, "_door_body"):
-            rb._door_body.set_text("Someone inside dials out to you")
-            rb._door_hint.set_text("Export a client package for the foothold")
+            rb._door_body.set_text("Inside peer dials out to you")
+            if hasattr(rb, "_door_hint") and rb._door_hint is not None:
+                rb._door_hint.set_visible(False)
         # Topology combo: keep III branded; inbound line uses side_label
         # Profile name defaults if still generic
         for entry, default_tpl in (
@@ -272,15 +269,14 @@ class ChinaIngressPage(Gtk.Box):
         if hasattr(self, "_saved_head"):
             self._saved_head.set_text(f"Saved Reach · {t.short_name} profiles")
         if hasattr(self, "_hop_group"):
-            self._hop_group.set_title(f"{t.side_label} endpoint (after VPN)")
+            self._hop_group.set_title(f"{t.side_label} endpoint")
         if hasattr(self, "_study_row"):
             if t.study_url:
-                self._study_row.set_subtitle(t.study_url)
+                self._study_row.set_subtitle("Open research study")
                 self._study_row.set_sensitive(True)
             else:
-                self._study_row.set_subtitle(
-                    "No territory study pack — same engineering model as China"
-                )
+                self._study_row.set_subtitle("No study for this region")
+                self._study_row.set_sensitive(False)
         # Accept port suggestion for reverse
         if hasattr(self, "_rev_accept_port") and t.default_accept_port:
             # only nudge if still at a common default
@@ -345,9 +341,7 @@ class ChinaIngressPage(Gtk.Box):
             self._territory_map.set_from_paintable(texture)
             self._territory_map.set_pixel_size(display_px)
             self._territory_map.set_size_request(display_px, display_px)
-            self._territory_map.set_tooltip_text(
-                f"{territory.short_name} — map filled with national flag"
-            )
+            self._territory_map.set_tooltip_text(territory.short_name)
             return
 
         # Fallback: plain white silhouette / globe
@@ -376,7 +370,7 @@ class ChinaIngressPage(Gtk.Box):
         wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         wrap.add_css_class("door-cards")
 
-        head = Gtk.Label(label="How do you reach it?", xalign=0)
+        head = Gtk.Label(label="Door", xalign=0)
         head.add_css_class("section-label")
         wrap.append(head)
 
@@ -385,7 +379,7 @@ class ChinaIngressPage(Gtk.Box):
         self._door_inbound_btn = self._make_door_card(
             title="Host there",
             body="You control a host in the region",
-            hint="VPN first, then REALITY or proxy",
+            hint="VPN first · REALITY or proxy landing",
             icon="network-server-symbolic",
             on_click=lambda *_: self._pick_door(_TOPO_DIRECT),
         )
@@ -393,8 +387,8 @@ class ChinaIngressPage(Gtk.Box):
 
         self._door_reverse_btn = self._make_door_card(
             title="Peer dials out",
-            body="Someone inside connects to you",
-            hint="Export a client package for the foothold",
+            body="Inside peer connects to your accept",
+            hint="Export client package for the foothold",
             icon="network-transmit-receive-symbolic",
             on_click=lambda *_: self._pick_door(_TOPO_REVERSE),
         )
@@ -404,11 +398,11 @@ class ChinaIngressPage(Gtk.Box):
         self._door_inbound = self._door_inbound_btn
         self._door_reverse = self._door_reverse_btn
 
-        pkg = Gtk.Button(label="Open export folder…")
+        pkg = Gtk.Button(label="Export folder")
         pkg.add_css_class("flat")
         pkg.add_css_class("door-pkg-btn")
         pkg.set_halign(Gtk.Align.START)
-        pkg.set_tooltip_text("Inverse Snowflake packages live here")
+        pkg.set_tooltip_text("Inverse Snowflake packages")
         pkg.connect("clicked", self._on_open_reverse_dir)
         wrap.append(pkg)
         return wrap
@@ -426,6 +420,7 @@ class ChinaIngressPage(Gtk.Box):
         btn.add_css_class("door-card")
         btn.add_css_class("flat")
         btn.set_hexpand(True)
+        btn.set_tooltip_text(hint)
         btn.connect("clicked", on_click)
 
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -446,9 +441,11 @@ class ChinaIngressPage(Gtk.Box):
         b.set_max_width_chars(26)
         b.add_css_class("door-card-body")
         col.append(b)
+        # Hint only as tooltip — keep cards two lines (title + body)
         h = Gtk.Label(label=hint, xalign=0, wrap=True)
         h.set_max_width_chars(26)
         h.add_css_class("door-card-hint")
+        h.set_visible(False)
         col.append(h)
         row.append(col)
 
@@ -482,13 +479,10 @@ class ChinaIngressPage(Gtk.Box):
             self._topo.set_selected(topo)
         self._set_door_selected(topo)
         self._on_topo_changed()
-        t = self._territory()
         if topo == _TOPO_REVERSE:
-            self._toast(
-                "Peer dials out — set accept host, export client, run on foothold"
-            )
+            self._toast("Peer dials out — set accept, export client")
         else:
-            self._toast(f"Host there — VPN, then {t.short_name} REALITY/Proxy")
+            self._toast("Host there — VPN, then landing hop")
 
     def _on_open_reverse_dir(self, *_a) -> None:
         from app_config import user_data_dir
@@ -516,19 +510,16 @@ class ChinaIngressPage(Gtk.Box):
 
     def _group_topology(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
-        g.set_title("3 · Topology")
-        g.set_description(
-            "Two open doors: inbound (China host you control) or Inverse Snowflake "
-            "(peer/lab dials out — export client package). Multi-hop later."
-        )
+        g.set_title("Topology")
+        g.set_description("")
 
         self._topo = Adw.ComboRow(title="Composition")
         self._topo.set_model(
             Gtk.StringList.new(
                 [
-                    "I · Inbound — host I control in territory",
-                    "II · Multi-hop machines — later",
-                    "III · Inverse Snowflake — peer dials out",
+                    "Host there (inbound)",
+                    "Multi-hop (later)",
+                    "Peer dials out (reverse)",
                 ]
             )
         )
@@ -540,9 +531,9 @@ class ChinaIngressPage(Gtk.Box):
         self._vantage.set_model(
             Gtk.StringList.new(
                 [
-                    "This machine (outside territory)",
-                    "Research host (outside territory)",
-                    "Operator host (outside territory)",
+                    "This machine",
+                    "Research host",
+                    "Operator host",
                 ]
             )
         )
@@ -550,21 +541,21 @@ class ChinaIngressPage(Gtk.Box):
         g.add(self._vantage)
 
         self._expect_probe = Adw.SwitchRow(
-            title="Expect active probing",
-            subtitle="Landing face should look mundane to strangers (REALITY/web cover)",
+            title="Expect probing",
+            subtitle="Prefer REALITY / mundane TLS face",
         )
         self._expect_probe.set_active(True)
         g.add(self._expect_probe)
         return g
 
     def _path_diagram(self) -> Gtk.Widget:
-        """Dedicated path section (card) — not floating/overlapping neighbors."""
+        """Compact path chips — caption is one short line, not a tutorial."""
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         section.add_css_class("china-path-section")
         section.set_hexpand(True)
         section.set_vexpand(False)
 
-        head = Gtk.Label(label="How traffic flows", xalign=0)
+        head = Gtk.Label(label="Path", xalign=0)
         head.add_css_class("section-label")
         head.add_css_class("china-path-diagram-label")
         section.append(head)
@@ -659,14 +650,11 @@ class ChinaIngressPage(Gtk.Box):
 
         # ── Required VPN underlay ─────────────────────────────────────
         vpn_g = Adw.PreferencesGroup()
-        vpn_g.set_title("1 · VPN underlay")
-        vpn_g.set_description(
-            "Required first hop — WireGuard/VPN or Mullvad SOCKS. "
-            "Add one under Adapters if the list is empty."
-        )
+        vpn_g.set_title("VPN underlay")
+        vpn_g.set_description("Required · add under Adapters if empty")
 
         self._vpn_row = Adw.ComboRow(title="VPN backend")
-        self._vpn_row.set_model(Gtk.StringList.new(["(none — add a VPN under Adapters)"]))
+        self._vpn_row.set_model(Gtk.StringList.new(["(none — add under Adapters)"]))
         self._vpn_row.connect("notify::selected", lambda *_: self._refresh_readiness())
         vpn_g.add(self._vpn_row)
         box.append(vpn_g)
@@ -674,11 +662,8 @@ class ChinaIngressPage(Gtk.Box):
 
         hop = Adw.PreferencesGroup()
         self._hop_group = hop
-        hop.set_title("2 · Landing hop")
-        hop.set_description(
-            "Second hop only — never from clearnet. Prefer REALITY on a host "
-            "you control in the selected region."
-        )
+        hop.set_title("Landing hop")
+        hop.set_description("After VPN · never clearnet")
 
         # Visual cover pick instead of a long ComboRow
         from widgets.choice_cards import Choice, ChoiceCards
@@ -692,13 +677,13 @@ class ChinaIngressPage(Gtk.Box):
                 Choice(
                     "reality",
                     "REALITY",
-                    "TLS camouflage — recommended",
+                    "TLS camouflage",
                     "security-high-symbolic",
                 ),
                 Choice(
                     "proxy",
                     "Proxy",
-                    "SOCKS/HTTP with your own cover",
+                    "SOCKS / HTTP",
                     "network-server-symbolic",
                 ),
             ],
@@ -770,11 +755,8 @@ class ChinaIngressPage(Gtk.Box):
 
         # Proxy fields (compact; stay on main setup)
         self._proxy_group = Adw.PreferencesGroup()
-        self._proxy_group.set_title("Proxy parameters")
-        self._proxy_group.set_description(
-            "Only if cover is terminated outside Spectre on the landing. "
-            "You must ensure the outer path is not pure high-entropy."
-        )
+        self._proxy_group.set_title("Proxy")
+        self._proxy_group.set_description("")
 
         self._p_proto = Adw.ComboRow(title="Protocol")
         self._p_proto.set_model(Gtk.StringList.new(list(PROXY_PROTOCOLS)))
@@ -811,15 +793,14 @@ class ChinaIngressPage(Gtk.Box):
     def _panel_multihop(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         banner = self._soon_banner(
-            "Multi-hop (v1.1)",
-            "Outside → optional outside front → middle machine(s) → China host. "
-            "UI layout is fixed; connect is not wired yet.",
+            "Multi-hop (later)",
+            "Not wired yet — use Host there or Peer dials out.",
         )
         box.append(banner)
 
         g = Adw.PreferencesGroup()
-        g.set_title("Hops (preview)")
-        g.set_description("All machines you operate — no human broker.")
+        g.set_title("Hops")
+        g.set_description("")
 
         front = Adw.EntryRow(title="Outside front (optional)")
         front.set_text("")
@@ -846,23 +827,18 @@ class ChinaIngressPage(Gtk.Box):
     def _panel_reverse(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         banner = self._soon_banner(
-            "Reverse / Inverse Snowflake (Composition III)",
-            "A willing host dials out to your outside accept (Snowflake inverted: "
-            "volunteer capacity under CN-side routing maps SOCKS for you). "
-            "Export the Inverse Snowflake client package for peers/lab/field. "
-            "Spectre uses VPN → SOCKS map after the client is up.",
+            "Peer dials out",
+            "Export client · accept outside · VPN → SOCKS",
         )
         box.append(banner)
 
         # VPN underlay (shared pattern)
         vpn_g = Adw.PreferencesGroup()
-        vpn_g.set_title("VPN underlay (required)")
-        vpn_g.set_description(
-            "Same rule as inbound: never use the reverse map from clearnet."
-        )
+        vpn_g.set_title("VPN underlay")
+        vpn_g.set_description("Required · never clearnet")
         self._rev_vpn_row = Adw.ComboRow(title="VPN backend")
         self._rev_vpn_row.set_model(
-            Gtk.StringList.new(["(none — add a VPN under Adapters)"])
+            Gtk.StringList.new(["(none — add under Adapters)"])
         )
         self._rev_vpn_row.connect(
             "notify::selected", lambda *_: self._on_fields_changed()
@@ -872,11 +848,8 @@ class ChinaIngressPage(Gtk.Box):
         self._rev_vpn_backend_ids: list[str] = []
 
         accept = Adw.PreferencesGroup()
-        accept.set_title("Outside accept (agent dials here)")
-        accept.set_description(
-            "Host you control outside mainland. Run exported outside-accept.json "
-            "with xray. Generate REALITY keys: xray x25519."
-        )
+        accept.set_title("Outside accept")
+        accept.set_description("Peer dials here")
         self._rev_accept_host = Adw.EntryRow(title="Accept host (public)")
         self._rev_accept_host.set_text("")
         self._rev_accept_host.connect(
@@ -893,21 +866,21 @@ class ChinaIngressPage(Gtk.Box):
             "notify::value", lambda *_: self._on_fields_changed()
         )
         accept.add(self._rev_accept_port)
-        self._rev_sni = Adw.EntryRow(title="REALITY dest SNI (optional Xray export)")
+        self._rev_sni = Adw.EntryRow(title="REALITY dest SNI")
         self._rev_sni.set_text("www.cloudflare.com")
         self._rev_sni.connect("notify::text", lambda *_: self._on_fields_changed())
         accept.add(self._rev_sni)
-        self._rev_pub = Adw.EntryRow(title="REALITY public key (for agent)")
+        self._rev_pub = Adw.EntryRow(title="REALITY public key")
         self._rev_pub.connect("notify::text", lambda *_: self._on_fields_changed())
         accept.add(self._rev_pub)
-        self._rev_priv = Adw.EntryRow(title="REALITY private key (accept only)")
+        self._rev_priv = Adw.EntryRow(title="REALITY private key")
         self._rev_priv.connect("notify::text", lambda *_: self._on_fields_changed())
         accept.add(self._rev_priv)
         self._rev_uuid = Adw.EntryRow(title="UUID / client id")
         self._rev_uuid.set_text(new_uuid())
         self._rev_uuid.connect("notify::text", lambda *_: self._on_fields_changed())
         accept.add(self._rev_uuid)
-        self._rev_sid = Adw.EntryRow(title="Short ID (empty OK for lab REALITY)")
+        self._rev_sid = Adw.EntryRow(title="Short ID")
         self._rev_sid.set_text("")
         self._rev_sid.connect("notify::text", lambda *_: self._on_fields_changed())
         accept.add(self._rev_sid)
@@ -917,7 +890,7 @@ class ChinaIngressPage(Gtk.Box):
         accept.add(self._rev_token)
         gen_row = Adw.ActionRow(
             title="Regenerate UUID / shortId / token",
-            subtitle="Does not rotate REALITY x25519 keys — run xray x25519 for those",
+            subtitle="Does not rotate REALITY x25519 keys",
         )
         gen_btn = Gtk.Button(label="Regenerate")
         gen_btn.set_valign(Gtk.Align.CENTER)
@@ -927,11 +900,8 @@ class ChinaIngressPage(Gtk.Box):
         box.append(accept)
 
         socks = Adw.PreferencesGroup()
-        socks.set_title("SOCKS map (Spectre hop)")
-        socks.set_description(
-            "After agent connects, accept exposes this SOCKS. Point Spectre here "
-            "(127.0.0.1 if accept is local; SSH -L if accept is a remote VPS)."
-        )
+        socks.set_title("SOCKS map")
+        socks.set_description("Spectre hop after peer connects · 127.0.0.1 if local")
         self._rev_map_host = Adw.EntryRow(title="Map SOCKS host")
         self._rev_map_host.set_text("127.0.0.1")
         self._rev_map_host.connect("notify::text", lambda *_: self._on_fields_changed())
@@ -965,15 +935,11 @@ class ChinaIngressPage(Gtk.Box):
         box.append(names)
 
         export = Adw.PreferencesGroup()
-        export.set_title("Inverse Snowflake package")
-        export.set_description(
-            "Writes accept + Inverse Snowflake client under "
-            "~/.local/share/reach/reverse/. Give the client folder to a "
-            "peer/lab/field host; run accept on your outside box (or origin VPS)."
-        )
+        export.set_title("Export package")
+        export.set_description("~/.local/share/reach/reverse/")
         exp_row = Adw.ActionRow(
-            title="Export Inverse Snowflake package",
-            subtitle="pairing.json · spectre-inverse-snowflake.py · RUNBOOK · Xray optional",
+            title="Export client package",
+            subtitle="For the inside foothold",
         )
         exp_btn = Gtk.Button(label="Export")
         exp_btn.add_css_class("suggested-action")
@@ -1087,7 +1053,7 @@ class ChinaIngressPage(Gtk.Box):
         t.add_css_class("pane-header-title")
         titles.append(t)
         sub = Gtk.Label(
-            label="Horizontal hop — You → REALITY → cover (scroll sideways if needed)",
+            label="You → REALITY → cover",
             xalign=0,
             wrap=True,
         )
@@ -1163,7 +1129,7 @@ class ChinaIngressPage(Gtk.Box):
         title = Gtk.Label(label="Readiness", xalign=0)
         title.add_css_class("ready-summary-title")
         col.append(title)
-        self._ready_card_sub = Gtk.Label(label="Check setup status", xalign=0, wrap=True)
+        self._ready_card_sub = Gtk.Label(label="Status", xalign=0, wrap=True)
         self._ready_card_sub.add_css_class("ready-summary-sub")
         col.append(self._ready_card_sub)
         row.append(col)
@@ -1208,7 +1174,7 @@ class ChinaIngressPage(Gtk.Box):
         t.add_css_class("pane-header-title")
         titles.append(t)
         self._ready_page_sub = Gtk.Label(
-            label="Checks for the mode you selected",
+            label="Pass/fail for this door",
             xalign=0,
         )
         self._ready_page_sub.add_css_class("pane-header-sub")
@@ -1314,7 +1280,7 @@ class ChinaIngressPage(Gtk.Box):
         outer.append(self._saved_head)
 
         self._saved_empty = Gtk.Label(
-            label="No ingress profiles yet. Save from inbound or Inverse Snowflake below.",
+            label="No saved profiles yet",
             xalign=0,
             wrap=True,
         )
@@ -1326,21 +1292,17 @@ class ChinaIngressPage(Gtk.Box):
         outer.append(self._saved_list)
         return outer
 
-    # ── Actions ───────────────────────────────────────────────────────────
+    # ── Actions (config only — Connect lives on Home) ─────────────────────
 
     def _group_actions(self) -> Adw.PreferencesGroup:
+        """Territory-unique actions only. Session control is Home / tray."""
         g = Adw.PreferencesGroup()
-        g.set_title("5 · Actions")
-        g.set_description(
-            "Save writes backend + profile with territory=XX. "
-            "Inbound: path_intent=ingress_territory. "
-            "Inverse Snowflake: ingress_territory_reverse + Export client. "
-            "Connect uses the normal spectred handoff when readiness passes."
-        )
+        g.set_title("")
+        g.set_description("")
 
         save_row = Adw.ActionRow(
-            title="Save backend and profile",
-            subtitle="Persists under Backends and Profiles",
+            title="Save path",
+            subtitle="Writes recipe · Connect from Home",
         )
         self._save_btn = Gtk.Button(label="Save")
         self._save_btn.add_css_class("suggested-action")
@@ -1349,47 +1311,31 @@ class ChinaIngressPage(Gtk.Box):
         save_row.add_suffix(self._save_btn)
         g.add(save_row)
 
-        probe_row = Adw.ActionRow(
-            title="Probe landing (TCP)",
-            subtitle="Outside vantage only — does not prove inside-CN paths",
+        home_row = Adw.ActionRow(
+            title="Home",
+            subtitle="Connect / Disconnect",
         )
-        self._probe_btn = Gtk.Button(label="Probe")
-        self._probe_btn.set_valign(Gtk.Align.CENTER)
-        self._probe_btn.connect("clicked", self._on_probe)
-        probe_row.add_suffix(self._probe_btn)
-        g.add(probe_row)
-
-        conn_row = Adw.ActionRow(
-            title="Connect",
-            subtitle="Selects saved profile and hands off to core",
-        )
-        self._connect_btn = Gtk.Button(label="Connect")
-        self._connect_btn.add_css_class("suggested-action")
-        self._connect_btn.set_valign(Gtk.Align.CENTER)
-        self._connect_btn.connect("clicked", self._on_connect)
-        conn_row.add_suffix(self._connect_btn)
-        g.add(conn_row)
-
-        disc_row = Adw.ActionRow(
-            title="Disconnect",
-            subtitle="Tear down active Spectre path",
-        )
-        self._disc_btn = Gtk.Button(label="Disconnect")
-        self._disc_btn.set_valign(Gtk.Align.CENTER)
-        self._disc_btn.connect("clicked", self._on_disconnect)
-        disc_row.add_suffix(self._disc_btn)
-        g.add(disc_row)
+        home_row.set_activatable(True)
+        home_row.connect("activated", lambda *_: self._nav("home"))
+        try:
+            ic = Gtk.Image.new_from_icon_name("go-home-symbolic")
+        except Exception:
+            ic = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        ic.set_pixel_size(16)
+        home_row.add_suffix(ic)
+        g.add(home_row)
 
         return g
 
     def _group_docs(self) -> Adw.PreferencesGroup:
+        """Study link only — depth lives on anguish, not in the desk."""
         g = Adw.PreferencesGroup()
-        g.set_title("Architecture")
-        g.set_description(f"Plan: {IMPL_PLAN}")
+        g.set_title("")
+        g.set_description("")
 
         self._study_row = Adw.ActionRow(
-            title="Territory research study",
-            subtitle=STUDY_URL_CN,
+            title="Learn more",
+            subtitle="Research study",
         )
         self._study_row.set_activatable(True)
         self._study_row.connect("activated", self._on_open_study)
@@ -1416,27 +1362,20 @@ class ChinaIngressPage(Gtk.Box):
         idx = int(self._topo.get_selected())
         if idx == _TOPO_MULTIHOP:
             self._stack.set_visible_child_name("multihop")
-            self._path_caption.set_text(
-                "Outside → front? → middle → China host → service (v1.1)."
-            )
+            self._path_caption.set_text("You → VPN → hops → host")
             self._set_path_active(multi=True)
         elif idx == _TOPO_REVERSE:
             self._stack.set_visible_child_name("reverse")
             self._step_hop.set_text("Accept")
             self._step_land.set_text("Peer")
-            self._path_caption.set_text(
-                "Inverse Snowflake: peer client dials out → your accept → "
-                "you use VPN → SOCKS map (Export package for the peer)."
-            )
+            self._path_caption.set_text("Peer → accept · VPN → SOCKS")
             self._set_path_active(reverse=True)
             self._reload_vpn_combo()
         else:
             self._stack.set_visible_child_name("direct")
             self._step_hop.set_text("Cover")
             self._step_land.set_text("Host")
-            self._path_caption.set_text(
-                "Composition I: you → VPN underlay → TLS cover → China host."
-            )
+            self._path_caption.set_text("You → VPN → cover → host")
             self._set_path_active(direct=True)
         self._refresh_readiness()
         self._update_action_sensitivity()
@@ -1580,8 +1519,8 @@ class ChinaIngressPage(Gtk.Box):
     def _collect_checks(self) -> list[tuple[bool, str]]:
         if int(self._topo.get_selected()) == _TOPO_MULTIHOP:
             return [
-                (False, "Multi-hop is not wired yet — use inbound or reverse"),
-                (True, "Composition II UI is preview-only"),
+                (False, "Multi-hop not wired — use Host there or Peer dials out"),
+                (True, "Multi-hop is preview-only"),
             ]
         if self._is_reverse():
             return self._collect_checks_reverse()
@@ -1589,6 +1528,7 @@ class ChinaIngressPage(Gtk.Box):
 
     def _collect_checks_inbound(self) -> list[tuple[bool, str]]:
         checks: list[tuple[bool, str]] = []
+        t = self._territory()
         vpn = self._selected_vpn_backend()
         if vpn is None:
             checks.append((False, "VPN underlay selected"))
@@ -1598,22 +1538,22 @@ class ChinaIngressPage(Gtk.Box):
             checks.append(
                 (
                     vpn.is_configured(),
-                    "VPN underlay complete (WireGuard .conf or Mullvad SOCKS)",
+                    "VPN underlay complete",
                 )
             )
 
         pname = (self._profile_name.get_text() or "").strip()
         bname = (self._backend_name.get_text() or "").strip()
         checks.append((bool(pname), "Profile name set"))
-        checks.append((bool(bname), "China backend name set"))
+        checks.append((bool(bname), "Landing backend name set"))
 
         if self._use_proxy():
             host = (self._p_host.get_text() or "").strip()
             port = int(self._p_port.get_value())
-            checks.append((bool(host), "China proxy host set"))
-            checks.append((port > 0, f"China proxy port {port}"))
+            checks.append((bool(host), "Proxy host set"))
+            checks.append((port > 0, f"Proxy port {port}"))
             checks.append(
-                (True, "You confirm China hop cover is not pure high-entropy"),
+                (True, "You confirm hop cover is not pure high-entropy"),
             )
         else:
             server = (self._r_server.get_text() or "").strip()
@@ -1621,13 +1561,13 @@ class ChinaIngressPage(Gtk.Box):
             pk = (self._r_pk.get_text() or "").strip()
             sni = (self._r_sni.get_text() or "").strip()
             port = int(self._r_port.get_value())
-            checks.append((bool(server), "China REALITY server set"))
-            checks.append((port > 0, f"China hop port {port}"))
+            checks.append((bool(server), "REALITY server set"))
+            checks.append((port > 0, f"Hop port {port}"))
             checks.append((bool(uuid_s), "UUID set"))
             checks.append((bool(pk), "Public key set"))
-            checks.append((bool(sni), "SNI set (required for ingress cover)"))
-        checks.append((True, "Never dial China from clearnet (VPN first)"))
-        checks.append((True, "China host is operator-owned"))
+            checks.append((bool(sni), "SNI set"))
+        checks.append((True, f"Never dial {t.short_name} from clearnet"))
+        checks.append((True, f"{t.short_name} host is operator-owned"))
         return checks
 
     def _collect_checks_reverse(self) -> list[tuple[bool, str]]:
@@ -1649,20 +1589,22 @@ class ChinaIngressPage(Gtk.Box):
         pname = (self._rev_profile_name.get_text() or "").strip()
         bname = (self._rev_backend_name.get_text() or "").strip()
 
-        checks.append((bool(host), "Outside accept host set"))
+        checks.append((bool(host), "Accept host set"))
         checks.append((int(self._rev_accept_port.get_value()) > 0, "Accept port set"))
-        checks.append((bool(sni), "REALITY dest SNI set (agent cover)"))
+        checks.append((bool(sni), "REALITY dest SNI set"))
         checks.append(
-            (bool(pub) or bool((self._rev_priv.get_text() or "").strip()),
-             "REALITY key material (public for agent and/or private for accept)"),
+            (
+                bool(pub) or bool((self._rev_priv.get_text() or "").strip()),
+                "REALITY keys set",
+            ),
         )
-        checks.append((bool(uuid_s), "UUID / pairing id set"))
+        checks.append((bool(uuid_s), "UUID set"))
         checks.append((bool(map_host), "SOCKS map host set"))
         checks.append((map_port > 0, f"SOCKS map port {map_port}"))
         checks.append((bool(pname), "Profile name set"))
         checks.append((bool(bname), "Map backend name set"))
-        checks.append((True, "Agent dials out with TCP REALITY (not bare frp)"))
-        checks.append((True, "Foothold is willing peer/lab/field"))
+        checks.append((True, "Agent uses TCP REALITY dial-out"))
+        checks.append((True, "Foothold is willing peer"))
         return checks
 
     def _readiness_ok(self) -> bool:
@@ -1725,21 +1667,20 @@ class ChinaIngressPage(Gtk.Box):
         if hasattr(self, "_ready_hero_detail"):
             if not self._is_wireable():
                 self._ready_hero_detail.set_text(
-                    "Multi-hop is later. Pick Host there or Peer dials out on setup."
+                    "Pick Host there or Peer dials out"
                 )
             elif all_ok:
                 if self._is_reverse():
                     self._ready_hero_detail.set_text(
-                        "Save the profile, export the client package, then start "
-                        "accept + agent before Connect on Home."
+                        "Save · export client · run accept + agent · Home → Connect"
                     )
                 else:
                     self._ready_hero_detail.set_text(
-                        "Save the profile, then Connect from Home when the core is up."
+                        "Save path · then Connect on Home"
                     )
             else:
                 self._ready_hero_detail.set_text(
-                    "Fill the remaining items below, then return to Set up to save."
+                    "Finish checks below · then Save"
                 )
         if hasattr(self, "_ready_page_sub"):
             mode = "Peer dials out" if self._is_reverse() else "Host there"
@@ -1760,50 +1701,12 @@ class ChinaIngressPage(Gtk.Box):
         wire = self._is_wireable()
         ok = self._readiness_ok()
         if hasattr(self, "_save_btn"):
-            self._save_btn.set_sensitive(wire and ok and not self._action_busy)
+            self._save_btn.set_sensitive(wire and ok)
         if hasattr(self, "_ready_page_save"):
-            self._ready_page_save.set_sensitive(wire and ok and not self._action_busy)
+            self._ready_page_save.set_sensitive(wire and ok)
             self._ready_page_save.set_label(
-                "Save profile" if (wire and ok) else "Save when ready"
+                "Save path" if (wire and ok) else "Save when ready"
             )
-        if hasattr(self, "_probe_btn"):
-            self._probe_btn.set_sensitive(wire and not self._probe_busy)
-        if hasattr(self, "_connect_btn"):
-            has_profile = bool(self._bound_profile_id) or self._has_ingress_profile()
-            self._connect_btn.set_sensitive(
-                wire and has_profile and not self._action_busy
-            )
-        st = self._services.core.status()
-        if hasattr(self, "_disc_btn"):
-            self._disc_btn.set_sensitive(
-                st.state in (CoreState.CONNECTED, CoreState.CONNECTING)
-                and not self._action_busy
-            )
-
-    def _has_ingress_profile(self) -> bool:
-        return any(
-            is_any_ingress_intent(p.path_intent, p.notes, p.name)
-            for p in self._services.profiles.list()
-        )
-
-    def _landing_host_port(self) -> tuple[str, int] | None:
-        if self._is_reverse():
-            host = (self._rev_map_host.get_text() or "").strip()
-            port = int(self._rev_map_port.get_value())
-            if not host or port <= 0:
-                return None
-            return host, port
-        if not self._is_direct_v1():
-            return None
-        if self._use_proxy():
-            host = (self._p_host.get_text() or "").strip()
-            port = int(self._p_port.get_value())
-        else:
-            host = (self._r_server.get_text() or "").strip()
-            port = int(self._r_port.get_value())
-        if not host or port <= 0:
-            return None
-        return host, port
 
     def _reverse_pairing(self) -> ReversePairing:
         sni = (self._rev_sni.get_text() or "").strip() or "www.microsoft.com"
@@ -1978,7 +1881,7 @@ class ChinaIngressPage(Gtk.Box):
         except Exception:
             pass
         kind = "reverse" if self._is_reverse() else "inbound"
-        self._toast(f"Saved “{profile.name}” ({kind})")
+        self._toast(f"Saved “{profile.name}” ({kind}) · Connect on Home")
         if self._on_changed:
             self._on_changed()
         self._reload_saved()
@@ -2188,143 +2091,6 @@ class ChinaIngressPage(Gtk.Box):
             )
         return backend, profile
 
-    def _on_probe(self, *_a) -> None:
-        hp = self._landing_host_port()
-        if not hp:
-            self._toast("Set server/host and port first")
-            return
-        host, port = hp
-        if self._probe_busy:
-            return
-        self._probe_busy = True
-        self._probe_btn.set_sensitive(False)
-        self._probe_btn.set_label("Probing…")
-        label = "SOCKS map" if self._is_reverse() else "landing"
-        self._toast(f"Probing {label} {host}:{port} (outside vantage)…")
-
-        def worker() -> None:
-            ok = False
-            err = ""
-            try:
-                with socket.create_connection((host, port), timeout=5.0):
-                    ok = True
-            except OSError as exc:
-                err = str(exc) or repr(exc)
-
-            def done() -> bool:
-                self._probe_busy = False
-                self._probe_btn.set_label("Probe")
-                self._update_action_sensitivity()
-                if ok:
-                    self._toast(f"TCP open {host}:{port} (this vantage only)")
-                else:
-                    self._toast(f"Probe failed: {err}")
-                return False
-
-            GLib.idle_add(done)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _on_connect(self, *_a) -> None:
-        if self._action_busy:
-            return
-        # Prefer bound profile matching current topology, else any ingress
-        pid = self._bound_profile_id
-        want_reverse = self._is_reverse()
-        if not pid or self._services.profiles.get(pid) is None:
-            for p in self._services.profiles.list():
-                if want_reverse and is_reverse_intent(p.path_intent, p.notes):
-                    pid = p.id
-                    break
-                if not want_reverse and is_any_ingress_intent(
-                    p.path_intent, p.notes, p.name
-                ) and not is_reverse_intent(p.path_intent, p.notes):
-                    pid = p.id
-                    break
-            if not pid:
-                for p in self._services.profiles.list():
-                    if is_any_ingress_intent(p.path_intent, p.notes, p.name):
-                        pid = p.id
-                        break
-        if not pid or self._services.profiles.get(pid) is None:
-            self._toast("Save a Reach profile first")
-            return
-
-        self._services.config.last_profile_id = pid
-        try:
-            self._services.save_config()
-        except Exception:
-            pass
-        profile = self._services.profiles.get(pid)
-        if profile:
-            self._services.core.set_selected_profile(profile.name)
-
-        self._action_busy = True
-        self._connect_btn.set_sensitive(False)
-        self._connect_btn.set_label("Connecting…")
-        mode = "reverse" if (profile and is_reverse_intent(profile.path_intent, profile.notes)) else "inbound"
-        self._toast(f"Connecting ({mode} profile)…")
-
-        def worker() -> None:
-            err: str | None = None
-            toast = ""
-            try:
-                status, ready = self._services.connect_active()
-                if not ready.ok:
-                    toast = ready.summary or "Not ready"
-                elif status is None:
-                    toast = "Connect failed"
-                elif status.state == CoreState.CONNECTED:
-                    toast = (
-                        f"Path up (outside vantage) — Reach · "
-                        f"{self._territory().short_name} ({mode})"
-                    )
-                else:
-                    toast = status.message or status.state.value
-            except Exception as exc:
-                err = str(exc) or repr(exc)
-
-            def done() -> bool:
-                self._action_busy = False
-                self._connect_btn.set_label("Connect")
-                self._update_action_sensitivity()
-                self._toast(err or toast)
-                if self._on_changed:
-                    self._on_changed()
-                return False
-
-            GLib.idle_add(done)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _on_disconnect(self, *_a) -> None:
-        if self._action_busy:
-            return
-        self._action_busy = True
-        self._disc_btn.set_sensitive(False)
-        self._disc_btn.set_label("…")
-
-        def worker() -> None:
-            toast = ""
-            err: str | None = None
-            try:
-                _st, toast = self._services.disconnect()
-            except Exception as exc:
-                err = str(exc) or repr(exc)
-
-            def done() -> bool:
-                self._action_busy = False
-                self._disc_btn.set_label("Disconnect")
-                self._update_action_sensitivity()
-                self._toast(err or toast or "Disconnected")
-                if self._on_changed:
-                    self._on_changed()
-                return False
-
-            GLib.idle_add(done)
-
-        threading.Thread(target=worker, daemon=True).start()
-
     def _reload_saved(self) -> None:
         if not hasattr(self, "_saved_list"):
             return
@@ -2344,10 +2110,11 @@ class ChinaIngressPage(Gtk.Box):
             lab.set_hexpand(True)
             lab.add_css_class("china-saved-name")
             row.append(lab)
-            use = Gtk.Button(label="Use")
-            use.add_css_class("flat")
-            use.connect("clicked", self._on_use_profile, p.id)
-            row.append(use)
+            load = Gtk.Button(label="Load")
+            load.add_css_class("flat")
+            load.set_tooltip_text("Load into setup (edit / re-save)")
+            load.connect("clicked", self._on_use_profile, p.id)
+            row.append(load)
             self._saved_list.append(row)
         self._update_action_sensitivity()
 
@@ -2399,7 +2166,7 @@ class ChinaIngressPage(Gtk.Box):
             self._services.save_config()
         except Exception:
             pass
-        self._toast(f"Using “{profile.name}”")
+        self._toast(f"Loaded “{profile.name}” into setup")
         self._refresh_readiness()
         self._update_action_sensitivity()
 

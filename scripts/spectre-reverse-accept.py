@@ -382,7 +382,12 @@ class AcceptServer:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Spectre reverse accept (outside)")
-    ap.add_argument("--token", required=True, help="shared pairing token")
+    ap.add_argument("--token", default=None, help="shared pairing token (prefer --token-file)")
+    ap.add_argument(
+        "--token-file",
+        default=None,
+        help="read pairing token from file (avoids argv exposure in ps)",
+    )
     ap.add_argument("--listen", default="0.0.0.0:8443", help="agent dial-in host:port")
     ap.add_argument("--socks", default="127.0.0.1:10808", help="SOCKS map host:port")
     ap.add_argument(
@@ -398,6 +403,11 @@ def main() -> int:
         help="max DATA listener port (0 = OS ephemeral)",
     )
     args = ap.parse_args()
+    if args.token_file:
+        with open(args.token_file, "r", encoding="utf-8") as tf:
+            args.token = tf.read().strip()
+    if not args.token:
+        ap.error("provide --token or --token-file")
     try:
         AcceptServer(
             args.token,

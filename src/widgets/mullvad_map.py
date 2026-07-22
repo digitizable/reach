@@ -1965,7 +1965,7 @@ class MullvadMap(Gtk.Box):
                             f"Selected {city.city_name}"
                             if "tunnel stays" in (msg or "").lower()
                             or "constraint" in (msg or "").lower()
-                            else f"Selected {city.city_name} · press Connect"
+                            else f"Selected {city.city_name} · Connect on Home"
                         )
                         self._on_toast(short)
                 else:

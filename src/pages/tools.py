@@ -1,8 +1,8 @@
-"""Tools — core diagnostics plus plugin-gated lab utilities.
+"""Tools — diagnostics and lab utilities only (no path Connect / Disconnect).
 
 Core: status, preflight, unlock, deps, clearnet, SOCKS, logs, TCP probe.
 Built-in packs (Settings → Plugins): path fingerprint, lab companions.
-C2 lives in the marketplace plugin Hogwarts.
+C2 lives in the marketplace plugin Hogwarts. Session control is Home.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ _TOOLS: tuple[_Tool, ...] = (
     _Tool(
         "preflight",
         "Path preflight",
-        "Readiness checks on the active path",
+        "Readiness of the active path (no Connect)",
         "emblem-ok-symbolic",
         "run",
         "preflight",
@@ -84,7 +84,7 @@ _TOOLS: tuple[_Tool, ...] = (
     _Tool(
         "probe",
         "TCP probe",
-        "Outside vantage — open host:port (landing / accept)",
+        "TCP open check · host:port (not Connect)",
         "network-transmit-receive-symbolic",
         "page",
         "probe",
@@ -163,7 +163,7 @@ class ToolsPage(Gtk.Box):
         t.add_css_class("pane-header-title")
         titles.append(t)
         sub = Gtk.Label(
-            label="Always-on diagnostics · lab tools when enabled",
+            label="Diagnostics only · Connect lives on Home",
             xalign=0,
         )
         sub.add_css_class("pane-header-sub")
@@ -230,7 +230,7 @@ class ToolsPage(Gtk.Box):
         self._output_buf = self._output.get_buffer()
         self._set_output(
             "Pick a tool above.\n"
-            "Core status and preflight use your active path and spectred."
+            "Uses the active path and spectred — does not Connect or Disconnect."
         )
 
         out_scroll = Gtk.ScrolledWindow()
@@ -591,7 +591,7 @@ class ToolsPage(Gtk.Box):
         t.add_css_class("pane-header-title")
         titles.append(t)
         s = Gtk.Label(
-            label="Outside vantage only — not proof of inside-region paths",
+            label="TCP check only · not Connect · outside vantage",
             xalign=0,
         )
         s.add_css_class("pane-header-sub")

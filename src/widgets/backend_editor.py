@@ -29,8 +29,8 @@ class BackendEditorDialog(Adw.MessageDialog):
         super().__init__(
             transient_for=parent,
             heading=title,
-            body="Configure an adapter hops can use. "
-            "Incomplete drafts are allowed — Connect requires complete adapters.",
+            body="Building block for hop chains. "
+            "Drafts OK — Home Connect needs complete adapters.",
         )
         self._on_save = on_save
         self._on_error = on_error

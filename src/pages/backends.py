@@ -44,7 +44,7 @@ class BackendsPage(Gtk.Box):
             self.append(
                 page_header(
                     "Adapters",
-                    subtitle="VPN, Tor, REALITY, proxy — what hops can use.",
+                    subtitle="Hop building blocks · not session control",
                     end=new_btn,
                 )
             )
@@ -61,7 +61,7 @@ class BackendsPage(Gtk.Box):
         master.set_vexpand(True)
 
         self._empty = Gtk.Label(
-            label="No adapters yet.\nAdd a VPN, REALITY, Tor, or proxy.",
+            label="No adapters yet.\nAdd VPN, REALITY, Tor, or proxy.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")

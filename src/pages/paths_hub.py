@@ -1,4 +1,4 @@
-"""Paths — single page with Recipes / Adapters panes (not hub sub-pages).
+"""Paths — Recipes / Adapters config only (session control is Home).
 
 Rail: **Paths**. In-page panes switch instantly (no back / no dashboard).
 
@@ -51,7 +51,7 @@ class PathsHubPage(Gtk.Box):
         t = Gtk.Label(label="Paths", xalign=0)
         t.add_css_class("pane-header-title")
         titles.append(t)
-        self._header_sub = Gtk.Label(label="Recipes · hop chains for Connect", xalign=0)
+        self._header_sub = Gtk.Label(label="Recipes · hop chains (config)", xalign=0)
         self._header_sub.add_css_class("pane-header-sub")
         titles.append(self._header_sub)
         header.append(titles)
@@ -65,14 +65,14 @@ class PathsHubPage(Gtk.Box):
             (
                 "recipes",
                 "Recipes",
-                "Hop chains · used by Connect",
+                "Hop chains · set active, Connect on Home",
                 "view-list-symbolic",
                 "recipes.svg",  # open recipe book (distinct from Paths hop-chain)
             ),
             (
                 "adapters",
                 "Adapters",
-                "VPN · Tor · REALITY · proxy",
+                "VPN · Tor · REALITY · proxy building blocks",
                 "network-server-symbolic",
                 None,
             ),
@@ -165,11 +165,11 @@ class PathsHubPage(Gtk.Box):
                     btn.handler_unblock_by_func(self._on_pane_toggled)
 
         if sid == "recipes":
-            self._header_sub.set_text("Recipes · hop chains for Connect")
+            self._header_sub.set_text("Recipes · hop chains (config)")
             self._add_btn.set_tooltip_text("New path")
             self._recipes.reload()
         else:
-            self._header_sub.set_text("Adapters · VPN · Tor · REALITY · proxy")
+            self._header_sub.set_text("Adapters · building blocks for hops")
             self._add_btn.set_tooltip_text("New adapter")
             self._adapters.reload()
 

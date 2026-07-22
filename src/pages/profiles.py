@@ -45,7 +45,7 @@ class ProfilesPage(Gtk.Box):
             self.append(
                 page_header(
                     "Paths",
-                    subtitle="Recipes of hops. Each hop uses an adapter.",
+                    subtitle="Recipes of hops · Connect on Home",
                     end=new_btn,
                 )
             )
@@ -63,7 +63,7 @@ class ProfilesPage(Gtk.Box):
         master.set_vexpand(True)
 
         self._empty = Gtk.Label(
-            label="No paths yet.\nCreate one, or open Territories.",
+            label="No paths yet.\nNew recipe, or Territories for ingress.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")
@@ -167,10 +167,10 @@ class ProfilesPage(Gtk.Box):
         self._edit_btn.set_sensitive(False)
         self._edit_btn.connect("clicked", self._on_edit)
         actions.append(self._edit_btn)
-        self._use_btn = Gtk.Button(label="Use on Home")
+        self._use_btn = Gtk.Button(label="Set active")
         self._use_btn.add_css_class("flat")
         self._use_btn.set_sensitive(False)
-        self._use_btn.set_tooltip_text("Set as active path for Connect")
+        self._use_btn.set_tooltip_text("Select on Home — Connect only there")
         self._use_btn.connect("clicked", self._on_use)
         actions.append(self._use_btn)
         self._del_btn = Gtk.Button(label="Delete")
@@ -258,7 +258,7 @@ class ProfilesPage(Gtk.Box):
         )
         self._detail_hops.set_text(explain.hops_line or "No hops")
         if ready.ok:
-            self._detail_ready.set_text("Ready to Connect from Home.")
+            self._detail_ready.set_text("Ready · Connect on Home")
         else:
             self._detail_ready.set_text(ready.summary)
 
@@ -285,7 +285,7 @@ class ProfilesPage(Gtk.Box):
             return
         self._services.set_active_profile(pid)
         p = self._services.profiles.get(pid)
-        self._toast(f"Active path → {p.name if p else 'path'}")
+        self._toast(f"Active path → {p.name if p else 'path'} · Connect on Home")
         if self._on_changed:
             self._on_changed()
 

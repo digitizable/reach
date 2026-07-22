@@ -64,7 +64,7 @@ class AppsPage(Gtk.Box):
         self.append(
             page_header(
                 "Apps",
-                subtitle="Clearnet launch · rest of the system stays on path",
+                subtitle="Clearnet launch · path stays on Home",
                 end=add_btn,
             )
         )
@@ -478,10 +478,10 @@ class AppsPage(Gtk.Box):
         st = self._services.core.status()
         if st.state == CoreState.CONNECTED:
             self._toast(
-                "Switched to system routing — Disconnect and Connect again to apply"
+                "Switched to system routing — re-Connect on Home to apply"
             )
         else:
-            self._toast("Switched to system routing — applies on Connect")
+            self._toast("Switched to system routing — re-Connect on Home")
         self.refresh_status_line()
 
     def refresh_status_line(self) -> None:
