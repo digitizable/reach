@@ -72,6 +72,21 @@ class AppConfig:
     tray_enabled: bool = True
     close_to_tray: bool = True
 
+    # Built-in packs (empty = privacy / core path console only)
+    # Built-in packs only — see core.plugins.PLUGINS (fingerprint, lab).
+    # Marketplace plugins (Hogwarts, …) use plugins_disabled when off.
+    plugins_enabled: list[str] = field(default_factory=list)
+
+    # Installed marketplace plugins (filesystem) that are turned OFF but kept.
+    # Missing from this list ⇒ enabled. Built-in packs use plugins_enabled instead.
+    plugins_disabled: list[str] = field(default_factory=list)
+
+    # Operator suite: marketplace + C2 plugins on the rail (Privacy/Lab hide them).
+    operate_enabled: bool = False
+
+    # Left rail: expanded shows section labels (Run / Path / …)
+    rail_expanded: bool = False
+
     # Window geometry (0 = use app default)
     window_width: int = 0
     window_height: int = 0
@@ -93,6 +108,29 @@ class AppConfig:
             return cls()
         known = {f.name for f in fields(cls)}
         data = {k: v for k, v in raw.items() if k in known}
+        if "plugins_enabled" in data:
+            from core.plugins import normalize_enabled
+
+            data["plugins_enabled"] = normalize_enabled(data.get("plugins_enabled"))
+        if "plugins_disabled" in data:
+            raw_dis = data.get("plugins_disabled") or []
+            if isinstance(raw_dis, list):
+                data["plugins_disabled"] = [
+                    str(x).strip() for x in raw_dis if str(x).strip()
+                ]
+            else:
+                data["plugins_disabled"] = []
+        # Migrate: configs written before operate_enabled — if marketplace
+        # plugins are already installed, keep Operate on so Hogwarts doesn't vanish.
+        if "operate_enabled" not in raw:
+            try:
+                from core.plugin_store import list_installed
+
+                data["operate_enabled"] = len(list_installed()) > 0
+            except Exception:
+                data["operate_enabled"] = False
+        else:
+            data["operate_enabled"] = bool(data.get("operate_enabled"))
         try:
             return cls(**data)
         except TypeError:
@@ -157,11 +195,72 @@ class Services:
         )
 
     def save_config(self) -> None:
+        from core.plugins import normalize_enabled
+
+        self.config.plugins_enabled = normalize_enabled(self.config.plugins_enabled)
         self.config.save(self._config_path)
         self.core.socket_path = self.config.core_socket.strip() or default_socket_path()
         self.core.timeout_sec = self.config.core_timeout_sec
         self.core.api_token = self.config.api_token
-        self.log("Config saved")
+        # Throttle log line — "Config saved" was the #2 most common desktop.log
+        # entry (window geometry / profile sync) and added disk noise every few s.
+        import time as _time
+
+        now = _time.monotonic()
+        last = float(getattr(self, "_last_config_log_at", 0.0) or 0.0)
+        if now - last >= 30.0:
+            self._last_config_log_at = now
+            self.log("Config saved")
+
+    def plugins_enabled(self) -> list[str]:
+        from core.plugins import normalize_enabled
+
+        return normalize_enabled(self.config.plugins_enabled)
+
+    def plugin_enabled(self, plugin_id: str) -> bool:
+        from core.plugins import is_enabled
+
+        return is_enabled(self.config.plugins_enabled, plugin_id)
+
+    def operate_enabled(self) -> bool:
+        """True when the Operate rail (marketplace + C2 plugins) is unlocked."""
+        return bool(getattr(self.config, "operate_enabled", False))
+
+    def installed_plugin_active(self, plugin_id: str) -> bool:
+        """True if a filesystem marketplace plugin is installed and not disabled.
+
+        When Operate posture is off, all marketplace plugins are inactive on the rail
+        (installs stay on disk).
+        """
+        pid = (plugin_id or "").strip()
+        if not pid:
+            return False
+        if not self.operate_enabled():
+            return False
+        disabled = {
+            str(x).strip()
+            for x in (self.config.plugins_disabled or [])
+            if str(x).strip()
+        }
+        return pid not in disabled
+
+    def set_installed_plugin_active(self, plugin_id: str, active: bool) -> None:
+        """Enable/disable an installed plugin without uninstalling it."""
+        pid = (plugin_id or "").strip()
+        if not pid:
+            return
+        cur = [
+            str(x).strip()
+            for x in (self.config.plugins_disabled or [])
+            if str(x).strip()
+        ]
+        if active:
+            cur = [x for x in cur if x != pid]
+        else:
+            if pid not in cur:
+                cur.append(pid)
+        self.config.plugins_disabled = cur
+        self.save_config()
 
     def is_path_connected(self) -> bool:
         """True when spectred reports an active path (not merely core online)."""

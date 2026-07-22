@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Reach Paths (sidebar): multi-hop chain — white on transparent for dark UI -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="#ffffff">
+  <!-- Links between hops -->
+  <path d="M7.2 8.8 L10.8 15.2" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" fill="none"/>
+  <path d="M13.2 15.2 L16.8 8.8" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" fill="none"/>
+  <!-- Hop nodes -->
+  <circle cx="6" cy="7.5" r="2.6"/>
+  <circle cx="12" cy="16.5" r="2.6"/>
+  <circle cx="18" cy="7.5" r="2.6"/>
+</svg>

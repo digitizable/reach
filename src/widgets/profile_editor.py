@@ -10,6 +10,8 @@ from core.backends import BackendStore
 from core.path_compose import can_append_hop, composition_issues
 from core.path_explain import explain_profile
 from core.profiles import HOP_KINDS, Hop, Profile
+from widgets.choice_cards import Choice, ChoiceCards
+from widgets.path_graph import path_graph
 
 
 class ProfileEditorDialog(Adw.MessageDialog):
@@ -58,9 +60,15 @@ class ProfileEditorDialog(Adw.MessageDialog):
         self._summary.set_text(profile.summary if profile else "")
         box.append(self._labeled("Summary", self._summary))
 
-        hops_head = Gtk.Label(label="Hops (order matters)", xalign=0)
+        hops_head = Gtk.Label(label="Path (order matters)", xalign=0)
         hops_head.add_css_class("field-label")
         box.append(hops_head)
+
+        # Live diagram — illustrate the path instead of only listing rows
+        self._path_preview = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._path_preview.add_css_class("profile-path-preview")
+        self._path_preview.set_halign(Gtk.Align.CENTER)
+        box.append(self._path_preview)
 
         self._hops_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         box.append(self._hops_box)
@@ -71,14 +79,36 @@ class ProfileEditorDialog(Adw.MessageDialog):
         self._path_hint.set_visible(False)
         box.append(self._path_hint)
 
-        add_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self._hop_kind = Gtk.DropDown.new_from_strings(list(HOP_KINDS))
-        self._hop_kind.set_hexpand(True)
-        add_row.append(self._hop_kind)
-        add_btn = Gtk.Button(label="Add hop")
+        hop_icons = {
+            "REALITY": "security-high-symbolic",
+            "VPN": "network-vpn-symbolic",
+            "Tor": "network-workgroup-symbolic",
+            "Proxy": "network-server-symbolic",
+        }
+        hop_subs = {
+            "REALITY": "TLS cover hop",
+            "VPN": "Underlay tunnel",
+            "Tor": "Onion exit",
+            "Proxy": "SOCKS / HTTP",
+        }
+        self._hop_kind_cards = ChoiceCards(
+            [
+                Choice(
+                    k,
+                    k,
+                    hop_subs.get(k, ""),
+                    hop_icons.get(k, "network-transmit-symbolic"),
+                )
+                for k in HOP_KINDS
+            ],
+            selected=HOP_KINDS[0],
+            compact=True,
+        )
+        box.append(self._labeled("Add hop type", self._hop_kind_cards))
+        add_btn = Gtk.Button(label="Add hop to path")
+        add_btn.add_css_class("suggested-action")
         add_btn.connect("clicked", self._on_add_hop)
-        add_row.append(add_btn)
-        box.append(add_row)
+        box.append(add_btn)
 
         self._notes = Gtk.Entry()
         self._notes.set_placeholder_text("Optional notes")
@@ -96,9 +126,10 @@ class ProfileEditorDialog(Adw.MessageDialog):
         )
         info_hint.add_css_class("muted")
         box.append(info_hint)
-        info_scroll = Gtk.ScrolledWindow()
+        from widgets.scroll import scrolled_window
+
+        info_scroll = scrolled_window(vexpand=False)
         info_scroll.set_min_content_height(72)
-        info_scroll.set_hexpand(True)
         self._info_buf = Gtk.TextBuffer()
         self._info_buf.set_text(profile.info if profile else "")
         info_view = Gtk.TextView(buffer=self._info_buf)
@@ -152,8 +183,10 @@ class ProfileEditorDialog(Adw.MessageDialog):
             self._hops_box.remove(child)
             child = nxt
 
+        self._refresh_path_preview()
+
         if not self._hops:
-            empty = Gtk.Label(label="No hops yet — add at least one.", xalign=0)
+            empty = Gtk.Label(label="No hops yet — pick a type below and add one.", xalign=0)
             empty.add_css_class("muted")
             self._hops_box.append(empty)
             self._update_path_hint()
@@ -258,15 +291,35 @@ class ProfileEditorDialog(Adw.MessageDialog):
             self._hops[index].backend_id = choices[idx][0]
             self._update_path_hint()
 
+    def _refresh_path_preview(self) -> None:
+        host = getattr(self, "_path_preview", None)
+        if host is None:
+            return
+        child = host.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            host.remove(child)
+            child = nxt
+        if not self._hops:
+            return
+        draft = Profile(id="draft", name="draft", hops=list(self._hops))
+        explain = explain_profile(draft, self._backends)
+        host.append(
+            path_graph(
+                explain.kinds if explain.hops else [h.kind for h in self._hops],
+                live=False,
+                empty="No hops",
+                labels=explain.labels or None,
+                roles=explain.roles or None,
+                sublabels=explain.sublabels or None,
+                caption="",
+            )
+        )
+
     def _on_add_hop(self, *_a) -> None:
-        model = self._hop_kind.get_model()
-        idx = int(self._hop_kind.get_selected())
-        if model is None or idx < 0:
+        kind = self._hop_kind_cards.selected_id
+        if kind not in HOP_KINDS:
             return
-        item = model.get_item(idx)
-        if item is None:
-            return
-        kind = item.get_string()  # type: ignore[attr-defined]
         backend_id = ""
         # Prefer first complete enabled backend of this kind
         for b in self._backends.list(kind=kind):

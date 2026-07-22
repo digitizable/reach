@@ -29,7 +29,9 @@ class CoreStatus:
     profile_id: str | None = None
     path_summary: str = "No path"
     hops: list[str] = field(default_factory=list)
+    hop_count: int = 0
     hop_details: list[dict[str, Any]] = field(default_factory=list)
+    fingerprint_note: str = ""
     local_proxy: str = ""
     dns_ok: bool | None = None
     leak_guard: bool | None = None
@@ -50,7 +52,9 @@ _START_POLL_TIMEOUT = 0.35
 # Status can include a cached Mullvad probe; 0.5s was too tight and caused
 # intermittent UNAVAILABLE → home flicker (“Offline” blink).
 _STATUS_TIMEOUT = 1.5
-_STATUS_CACHE_TTL = 0.5  # seconds — coalesce rapid chrome/tray/page polls
+# Coalesce chrome/tray/page polls. With 3s timers, 2.5s TTL still shares
+# almost all hits across window + tray without going stale on Connect.
+_STATUS_CACHE_TTL = 2.5  # seconds
 # Keep showing last successful status briefly if a single poll fails (socket
 # timeout / brief restart) so the dashboard does not blink Offline.
 _STATUS_STICKY_SEC = 8.0
@@ -133,14 +137,22 @@ def _status_from_json(
         if isinstance(raw_details, list)
         else []
     )
+    hops = list(data.get("hops") or [])
+    hop_count_raw = data.get("hop_count")
+    try:
+        hop_count = int(hop_count_raw) if hop_count_raw is not None else len(hops)
+    except (TypeError, ValueError):
+        hop_count = len(hops)
     return CoreStatus(
         state=_parse_state(str(data.get("state") or "")),
         message=str(data.get("message") or ""),
         active_profile=data.get("active_profile") or None,
         profile_id=data.get("profile_id") or None,
         path_summary=str(data.get("path_summary") or "No path"),
-        hops=list(data.get("hops") or []),
+        hops=hops,
+        hop_count=hop_count,
         hop_details=hop_details,
+        fingerprint_note=str(data.get("fingerprint_note") or ""),
         local_proxy=str(data.get("local_proxy") or ""),
         dns_ok=data.get("dns_ok"),
         leak_guard=data.get("leak_guard"),

@@ -85,12 +85,31 @@ class ChinaIngressPage(Gtk.Box):
         self._probe_busy = False
         self._territory_code = DEFAULT_TERRITORY_CODE
 
-        self._page_title = Gtk.Label(label="Doors", xalign=0)
+        # Nested sub-pages (main setup · readiness detail) without new rail items
+        from widgets.transitions import SUBPAGE_MS, slide_stack
+
+        # Homogeneous so main / readiness / REALITY fill the shell equally —
+        # none of them may push the window larger than the user set.
+        self._view_stack = slide_stack(
+            duration_ms=SUBPAGE_MS,
+            left_right=True,
+            hhomogeneous=True,
+            vhomogeneous=True,
+            css_class="territories-view-stack",
+        )
+        self._view_stack.set_hexpand(True)
+        self._view_stack.set_vexpand(True)
+
+        main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        main.set_hexpand(True)
+        main.set_vexpand(True)
+
+        self._page_title = Gtk.Label(label="Territories", xalign=0)
         self._page_title.add_css_class("pane-header-title")
         self._page_title.set_hexpand(True)
         self._page_title.set_valign(Gtk.Align.CENTER)
         self._page_sub = Gtk.Label(
-            label="Reach into a territory from outside",
+            label="Pick a region, choose how you reach it",
             xalign=0,
         )
         self._page_sub.add_css_class("pane-header-sub")
@@ -104,64 +123,81 @@ class ChinaIngressPage(Gtk.Box):
         header.add_css_class("pane-header")
         header.set_hexpand(True)
         header.append(titles)
-        self.append(header)
+        main.append(header)
 
-        # Desktop two-pane: choose door (left) · configure (right)
+        # Two-pane: choose region & mode (left) · set up (right)
+        # Keep natural width modest so the shell stays ~default size (no forced stretch).
         split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         split.add_css_class("master-detail")
         split.add_css_class("doors-split")
         split.set_hexpand(True)
         split.set_vexpand(True)
+        split.set_halign(Gtk.Align.FILL)
 
-        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         left.add_css_class("doors-left")
-        left.set_size_request(340, -1)
         left.set_hexpand(False)
         left.set_vexpand(True)
         left.append(self._hero_territory())
         left.append(self._door_cards())
         left.append(self._path_diagram())
-        left.append(self._group_readiness())
+        left.append(self._readiness_summary_card())
         left.append(self._group_actions())
-        left.append(self._group_docs())
-        # Hidden topology model (door cards drive selection)
+        # Docs tucked away — keep left column about choosing, not reading manuals
+        docs = self._group_docs()
+        docs.set_margin_top(8)
+        left.append(docs)
+        # Hidden topology model (mode cards drive selection)
         topo_hidden = self._group_topology()
         topo_hidden.set_visible(False)
         left.append(topo_hidden)
-        left_scroll = scroll_body(left, margin=16)
+        left_scroll = scroll_body(left, margin=14)
         left_scroll.set_hexpand(False)
-        left_scroll.set_size_request(360, -1)
+        left_scroll.set_size_request(260, -1)
+        # Never propagate content natural size into the shell (avoids resize glitch)
+        left_scroll.set_propagate_natural_width(False)
+        left_scroll.set_propagate_natural_height(False)
         split.append(left_scroll)
 
         sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         sep.add_css_class("master-detail-sep")
         split.append(sep)
 
-        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         right.add_css_class("doors-right")
         right.set_hexpand(True)
         right.set_vexpand(True)
-        cfg_head = Gtk.Label(label="Configuration", xalign=0)
+        cfg_head = Gtk.Label(label="Set up", xalign=0)
         cfg_head.add_css_class("section-label")
         right.append(cfg_head)
         cfg_sub = Gtk.Label(
-            label="Fill in only what this door needs — then save and Connect from Home.",
+            label="Only the fields this mode needs. Save, then Connect on Home.",
             xalign=0,
             wrap=True,
         )
+        cfg_sub.set_max_width_chars(36)
         cfg_sub.add_css_class("muted")
+        cfg_sub.add_css_class("doors-setup-sub")
         right.append(cfg_sub)
         right.append(self._group_stack())
         right.append(self._group_saved())
-        right_scroll = scroll_body(right, margin=20)
+        right_scroll = scroll_body(right, margin=14)
         right_scroll.set_hexpand(True)
+        right_scroll.set_propagate_natural_width(False)
+        right_scroll.set_propagate_natural_height(False)
         split.append(right_scroll)
 
-        self.append(split)
+        main.append(split)
+        self._view_stack.add_named(main, "main")
+        self._view_stack.add_named(self._build_readiness_page(), "readiness")
+        self._view_stack.add_named(self._build_reality_page(), "reality")
+        self.append(self._view_stack)
+
         self._reload_vpn_combo()
         self._on_topo_changed()
         self._set_door_selected(_TOPO_DIRECT)
         self._apply_territory()
+        self._refresh_reality_summary()
         self._refresh_readiness()
         self._reload_saved()
 
@@ -173,7 +209,8 @@ class ChinaIngressPage(Gtk.Box):
         g.add_css_class("doors-territory-group")
         g.set_title("")
         g.set_description("")
-        self._territory_row = Adw.ComboRow(title="Territory")
+        self._territory_row = Adw.ComboRow(title="Region")
+        self._territory_row.set_subtitle("Where you need a path to land")
         self._territory_row.set_model(Gtk.StringList.new(territory_labels()))
         # CN is index 0
         self._territory_row.set_selected(0)
@@ -195,23 +232,23 @@ class ChinaIngressPage(Gtk.Box):
     def _apply_territory(self) -> None:
         """Refresh user-visible copy for the selected territory."""
         t = self._territory()
-        self._page_title.set_text(f"Doors · {t.short_name}")
-        self._page_sub.set_text("Outside vantage · open a door into the territory")
+        self._page_title.set_text("Territories")
+        self._page_sub.set_text(f"Reaching {t.short_name} from outside")
         if hasattr(self, "_banner_title"):
             self._banner_title.set_text(t.short_name)
         if hasattr(self, "_banner_text"):
             self._banner_text.set_text(
-                f"{t.blurb} Never dial {t.short_name} endpoints from clearnet."
+                f"{t.blurb} Always go in under a VPN — never clearnet."
             )
-        # Update door card copy if present
+        # Update mode card copy if present
         ib = getattr(self, "_door_inbound_btn", None)
         if ib is not None and hasattr(ib, "_door_body"):
-            ib._door_body.set_text(f"I have a {t.side_label} host")
-            ib._door_hint.set_text("VPN underlay → REALITY / Proxy")
+            ib._door_body.set_text(f"You control a host in {t.short_name}")
+            ib._door_hint.set_text("VPN first, then REALITY or proxy")
         rb = getattr(self, "_door_reverse_btn", None)
         if rb is not None and hasattr(rb, "_door_body"):
-            rb._door_body.set_text("Peer dials out to me")
-            rb._door_hint.set_text("Inverse Snowflake · export client")
+            rb._door_body.set_text("Someone inside dials out to you")
+            rb._door_hint.set_text("Export a client package for the foothold")
         # Topology combo: keep III branded; inbound line uses side_label
         # Profile name defaults if still generic
         for entry, default_tpl in (
@@ -250,20 +287,20 @@ class ChinaIngressPage(Gtk.Box):
             v = int(self._rev_accept_port.get_value())
             if v in (443, 8443, 18443):
                 self._rev_accept_port.set_value(float(t.default_accept_port))
-        self._set_territory_map_asset(t.silhouette_asset())
+        self._set_territory_map(t)
 
     # ── Territory hero ────────────────────────────────────────────────────
 
     def _hero_territory(self) -> Gtk.Widget:
-        """Centered map + territory picker (not a wall of prefs)."""
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        """Compact region hero: map + name + short blurb + picker."""
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         card.add_css_class("doors-hero")
         card.set_halign(Gtk.Align.FILL)
 
         self._territory_map = Gtk.Image()
         self._territory_map.add_css_class("reach-territory-map")
-        self._territory_map.set_pixel_size(96)
-        self._territory_map.set_size_request(96, 96)
+        self._territory_map.set_pixel_size(120)
+        self._territory_map.set_size_request(120, 120)
         self._territory_map.set_halign(Gtk.Align.CENTER)
         card.append(self._territory_map)
 
@@ -278,10 +315,9 @@ class ChinaIngressPage(Gtk.Box):
         self._banner_text.add_css_class("doors-hero-text")
         self._banner_text.set_halign(Gtk.Align.CENTER)
         self._banner_text.set_justify(Gtk.Justification.CENTER)
-        self._banner_text.set_max_width_chars(36)
+        self._banner_text.set_max_width_chars(34)
         card.append(self._banner_text)
 
-        # Keep Adw ComboRow for territory but wrap quietly
         card.append(self._group_territory())
         return card
 
@@ -289,20 +325,45 @@ class ChinaIngressPage(Gtk.Box):
         # Back-compat alias
         return self._hero_territory()
 
-    def _set_territory_map_asset(self, filename: str | None) -> None:
-        """Load data/assets silhouette into banner map image."""
+    def _set_territory_map(self, territory: Territory) -> None:
+        """Show map silhouette filled with the national flag (or plain globe)."""
         if not hasattr(self, "_territory_map"):
             return
-        name = (filename or "globe.svg").strip()
+        # HiDPI: render large, display ~120px
+        display_px = 120
+        render_px = 256
+
+        from core.territory_flags import flag_filled_map_pixbuf
+
+        pb = flag_filled_map_pixbuf(
+            code=territory.code,
+            map_asset=territory.silhouette_asset(),
+            size=render_px,
+        )
+        if pb is not None:
+            texture = Gdk.Texture.new_for_pixbuf(pb)
+            self._territory_map.set_from_paintable(texture)
+            self._territory_map.set_pixel_size(display_px)
+            self._territory_map.set_size_request(display_px, display_px)
+            self._territory_map.set_tooltip_text(
+                f"{territory.short_name} — map filled with national flag"
+            )
+            return
+
+        # Fallback: plain white silhouette / globe
+        name = (territory.silhouette_asset() or "globe.svg").strip()
         path = project_root() / "data" / "assets" / name
         if not path.is_file():
             path = project_root() / "data" / "assets" / "globe.svg"
         try:
-            # 2× for HiDPI; fits 72px box
-            pb = GdkPixbuf.Pixbuf.new_from_file_at_size(str(path), 144, 144)
-            texture = Gdk.Texture.new_for_pixbuf(pb)
+            plain = GdkPixbuf.Pixbuf.new_from_file_at_size(
+                str(path), render_px, render_px
+            )
+            texture = Gdk.Texture.new_for_pixbuf(plain)
             self._territory_map.set_from_paintable(texture)
-            self._territory_map.set_pixel_size(72)
+            self._territory_map.set_pixel_size(display_px)
+            self._territory_map.set_size_request(display_px, display_px)
+            self._territory_map.set_tooltip_text(territory.short_name)
         except Exception:
             try:
                 self._territory_map.set_from_file(str(path))
@@ -315,25 +376,25 @@ class ChinaIngressPage(Gtk.Box):
         wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         wrap.add_css_class("door-cards")
 
-        head = Gtk.Label(label="Choose a door", xalign=0)
+        head = Gtk.Label(label="How do you reach it?", xalign=0)
         head.add_css_class("section-label")
         wrap.append(head)
 
         self._doors_group = wrap  # for _apply_territory set_description no-ops
 
         self._door_inbound_btn = self._make_door_card(
-            title="Inbound",
-            body="I have a host in the territory",
-            hint="VPN underlay → REALITY / Proxy",
+            title="Host there",
+            body="You control a host in the region",
+            hint="VPN first, then REALITY or proxy",
             icon="network-server-symbolic",
             on_click=lambda *_: self._pick_door(_TOPO_DIRECT),
         )
         wrap.append(self._door_inbound_btn)
 
         self._door_reverse_btn = self._make_door_card(
-            title="Dial-out",
-            body="Peer dials out to me",
-            hint="Inverse Snowflake · export client",
+            title="Peer dials out",
+            body="Someone inside connects to you",
+            hint="Export a client package for the foothold",
             icon="network-transmit-receive-symbolic",
             on_click=lambda *_: self._pick_door(_TOPO_REVERSE),
         )
@@ -343,10 +404,11 @@ class ChinaIngressPage(Gtk.Box):
         self._door_inbound = self._door_inbound_btn
         self._door_reverse = self._door_reverse_btn
 
-        pkg = Gtk.Button(label="Open export package folder…")
+        pkg = Gtk.Button(label="Open export folder…")
         pkg.add_css_class("flat")
         pkg.add_css_class("door-pkg-btn")
         pkg.set_halign(Gtk.Align.START)
+        pkg.set_tooltip_text("Inverse Snowflake packages live here")
         pkg.connect("clicked", self._on_open_reverse_dir)
         wrap.append(pkg)
         return wrap
@@ -381,9 +443,11 @@ class ChinaIngressPage(Gtk.Box):
         t.add_css_class("door-card-title")
         col.append(t)
         b = Gtk.Label(label=body, xalign=0, wrap=True)
+        b.set_max_width_chars(26)
         b.add_css_class("door-card-body")
         col.append(b)
         h = Gtk.Label(label=hint, xalign=0, wrap=True)
+        h.set_max_width_chars(26)
         h.add_css_class("door-card-hint")
         col.append(h)
         row.append(col)
@@ -421,10 +485,10 @@ class ChinaIngressPage(Gtk.Box):
         t = self._territory()
         if topo == _TOPO_REVERSE:
             self._toast(
-                "Dial-out — set accept host, export client, run on foothold"
+                "Peer dials out — set accept host, export client, run on foothold"
             )
         else:
-            self._toast(f"Inbound — VPN then {t.short_name} REALITY/Proxy")
+            self._toast(f"Host there — VPN, then {t.short_name} REALITY/Proxy")
 
     def _on_open_reverse_dir(self, *_a) -> None:
         from app_config import user_data_dir
@@ -494,54 +558,94 @@ class ChinaIngressPage(Gtk.Box):
         return g
 
     def _path_diagram(self) -> Gtk.Widget:
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        outer.add_css_class("china-path-diagram")
+        """Dedicated path section (card) — not floating/overlapping neighbors."""
+        section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        section.add_css_class("china-path-section")
+        section.set_hexpand(True)
+        section.set_vexpand(False)
 
-        lab = Gtk.Label(label="Path sketch", xalign=0)
-        lab.add_css_class("china-path-diagram-label")
-        outer.append(lab)
+        head = Gtk.Label(label="How traffic flows", xalign=0)
+        head.add_css_class("section-label")
+        head.add_css_class("china-path-diagram-label")
+        section.append(head)
 
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.add_css_class("china-path-diagram")
+        card.set_hexpand(True)
+
+        # Plain HBox — FlowBox mis-measures height and overlaps siblings
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        row.set_halign(Gtk.Align.CENTER)
         row.add_css_class("china-path-row")
+        row.set_halign(Gtk.Align.CENTER)
+        row.set_hexpand(True)
+        row.set_valign(Gtk.Align.CENTER)
 
-        self._step_client = self._path_chip("You\n(outside)")
-        self._step_vpn = self._path_chip("VPN\nunderlay")
-        self._step_hop = self._path_chip("TLS cover\n→ CN")
-        self._step_land = self._path_chip("China\nhost")
+        self._step_client = self._path_chip("You")
+        self._step_vpn = self._path_chip("VPN")
+        self._step_hop = self._path_chip("Cover")
+        self._step_land = self._path_chip("Host")
 
-        row.append(self._step_client)
-        row.append(self._path_arrow())
-        row.append(self._step_vpn)
-        row.append(self._path_arrow())
-        row.append(self._step_hop)
-        row.append(self._path_arrow())
-        row.append(self._step_land)
-        outer.append(row)
+        for w in (
+            self._step_client,
+            self._path_arrow(),
+            self._step_vpn,
+            self._path_arrow(),
+            self._step_hop,
+            self._path_arrow(),
+            self._step_land,
+        ):
+            row.append(w)
+        card.append(row)
 
         self._path_caption = Gtk.Label(label="", xalign=0, wrap=True)
+        self._path_caption.set_max_width_chars(32)
+        self._path_caption.set_wrap(True)
         self._path_caption.add_css_class("muted")
         self._path_caption.add_css_class("china-path-caption")
-        outer.append(self._path_caption)
-        return outer
+        card.append(self._path_caption)
 
-    def _path_chip(self, text: str) -> Gtk.Label:
+        section.append(card)
+        return section
+
+    def _path_chip(self, text: str) -> Gtk.Widget:
+        """Chip as a framed box so layout reserves real height (no CSS-only padding)."""
+        from gi.repository import Pango
+
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        frame.add_css_class("china-path-chip")
+        frame.set_valign(Gtk.Align.CENTER)
+        frame.set_halign(Gtk.Align.CENTER)
+
         lab = Gtk.Label(label=text, justify=Gtk.Justification.CENTER)
-        lab.add_css_class("china-path-chip")
-        lab.set_wrap(True)
+        lab.add_css_class("china-path-chip-label")
+        lab.set_ellipsize(Pango.EllipsizeMode.END)
+        lab.set_max_width_chars(7)
         lab.set_xalign(0.5)
-        # Full labels (e.g. "Mullvad VPN", territory names) — do not clip
-        return lab
+        frame.append(lab)
+        # Keep set_text / css class API used by _set_path_active / topo handlers
+        frame.set_text = lab.set_text  # type: ignore[method-assign]
+        frame.get_text = lab.get_text  # type: ignore[method-assign]
+        return frame
 
-    def _path_arrow(self) -> Gtk.Label:
+    def _path_arrow(self) -> Gtk.Widget:
         a = Gtk.Label(label="→")
         a.add_css_class("china-path-arrow")
+        a.set_valign(Gtk.Align.CENTER)
+        a.set_halign(Gtk.Align.CENTER)
         return a
 
     def _group_stack(self) -> Gtk.Widget:
-        self._stack = Gtk.Stack()
-        self._stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        from widgets.transitions import PANEL_MS, crossfade_stack
+
+        # Non-homogeneous: inactive panels (esp. reverse) must not set the width
+        self._stack = crossfade_stack(
+            duration_ms=PANEL_MS,
+            hhomogeneous=False,
+            vhomogeneous=False,
+            css_class="territories-mode-stack",
+        )
         self._stack.set_hexpand(True)
+        self._stack.set_vexpand(False)
 
         self._stack.add_named(self._panel_direct(), "direct")
         self._stack.add_named(self._panel_multihop(), "multihop")
@@ -555,37 +659,54 @@ class ChinaIngressPage(Gtk.Box):
 
         # ── Required VPN underlay ─────────────────────────────────────
         vpn_g = Adw.PreferencesGroup()
-        vpn_g.set_title("VPN underlay (required)")
+        vpn_g.set_title("1 · VPN underlay")
         vpn_g.set_description(
-            "A VPN must be up before any hop toward China. First hop is always "
-            "WireGuard/VPN or Mullvad app SOCKS. Configure backends under Backends "
-            "if the list is empty."
+            "Required first hop — WireGuard/VPN or Mullvad SOCKS. "
+            "Add one under Adapters if the list is empty."
         )
 
         self._vpn_row = Adw.ComboRow(title="VPN backend")
-        self._vpn_row.set_model(Gtk.StringList.new(["(none — add a VPN under Backends)"]))
+        self._vpn_row.set_model(Gtk.StringList.new(["(none — add a VPN under Adapters)"]))
         self._vpn_row.connect("notify::selected", lambda *_: self._refresh_readiness())
         vpn_g.add(self._vpn_row)
-
-        open_vpn = Adw.ActionRow(
-            title="Manage VPN backends",
-            subtitle="WireGuard .conf or Mullvad SOCKS",
-        )
-        open_vpn.set_activatable(True)
-        open_vpn.connect("activated", lambda *_: self._nav("backends"))
-        vpn_g.add(open_vpn)
         box.append(vpn_g)
         self._vpn_backend_ids: list[str] = []
 
         hop = Adw.PreferencesGroup()
         self._hop_group = hop
-        hop.set_title("Target-side endpoint (after VPN)")
+        hop.set_title("2 · Landing hop")
         hop.set_description(
-            "Second hop only — never from clearnet. Host you control in the "
-            "selected territory (or peer box). Prefer REALITY. For China, see "
-            "research/landing-paths (passport KYC, not HK-as-mainland)."
+            "Second hop only — never from clearnet. Prefer REALITY on a host "
+            "you control in the selected region."
         )
 
+        # Visual cover pick instead of a long ComboRow
+        from widgets.choice_cards import Choice, ChoiceCards
+
+        cover_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        cover_lab = Gtk.Label(label="Cover type", xalign=0)
+        cover_lab.add_css_class("field-label")
+        cover_box.append(cover_lab)
+        self._cover_cards = ChoiceCards(
+            [
+                Choice(
+                    "reality",
+                    "REALITY",
+                    "TLS camouflage — recommended",
+                    "security-high-symbolic",
+                ),
+                Choice(
+                    "proxy",
+                    "Proxy",
+                    "SOCKS/HTTP with your own cover",
+                    "network-server-symbolic",
+                ),
+            ],
+            selected="reality",
+            on_changed=lambda _id: self._on_cover_kind(),
+        )
+        cover_box.append(self._cover_cards)
+        # Hidden combo kept for _use_proxy() / existing logic
         self._cover_kind = Adw.ComboRow(title="Cover / hop kind")
         self._cover_kind.set_model(
             Gtk.StringList.new(
@@ -596,8 +717,9 @@ class ChinaIngressPage(Gtk.Box):
             )
         )
         self._cover_kind.set_selected(0)
-        self._cover_kind.connect("notify::selected", lambda *_: self._on_cover_kind())
+        self._cover_kind.set_visible(False)
         hop.add(self._cover_kind)
+        box.append(cover_box)
 
         self._profile_name = Adw.EntryRow(title="Profile name")
         self._profile_name.set_text("Reach · China")
@@ -611,65 +733,42 @@ class ChinaIngressPage(Gtk.Box):
 
         box.append(hop)
 
-        # REALITY fields
-        self._reality_group = Adw.PreferencesGroup()
-        self._reality_group.set_title("REALITY parameters")
-        self._reality_group.set_description(
-            "Paste a vless://…reality share link or fill fields. SNI required for ingress."
+        # REALITY / Proxy — summary card (REALITY opens full diagram sub-page)
+        from widgets.reality_diagram import RealityDiagramEditor
+        from widgets.transitions import PANEL_MS, panel_stack
+
+        self._cover_stack = panel_stack(
+            duration_ms=PANEL_MS,
+            css_class="cover-param-stack",
         )
 
-        import_row = Adw.ActionRow(title="Share link")
-        self._vless_entry = Gtk.Entry()
-        self._vless_entry.set_placeholder_text("vless://…")
-        self._vless_entry.set_hexpand(True)
-        self._vless_entry.set_valign(Gtk.Align.CENTER)
-        import_btn = Gtk.Button(label="Import")
-        import_btn.set_valign(Gtk.Align.CENTER)
-        import_btn.connect("clicked", self._on_import_vless)
-        import_row.add_suffix(self._vless_entry)
-        import_row.add_suffix(import_btn)
-        self._reality_group.add(import_row)
-
-        self._r_server = Adw.EntryRow(title="Server (host or IP)")
-        self._r_server.connect("changed", lambda *_: self._on_fields_changed())
-        self._reality_group.add(self._r_server)
-
-        self._r_port = Adw.SpinRow(
-            title="Port",
-            adjustment=Gtk.Adjustment(
-                value=443, lower=1, upper=65535, step_increment=1, page_increment=10
-            ),
+        # Editor lives on the sub-page; create once so shims always work
+        self._reality_editor = RealityDiagramEditor(
+            on_changed=self._on_fields_changed,
+            show_import=True,
+            show_advanced=True,
+            layout="row",
         )
-        self._r_port.connect("changed", lambda *_: self._refresh_readiness())
-        self._reality_group.add(self._r_port)
+        self._reality_editor.import_btn.connect("clicked", self._on_import_vless)
 
-        self._r_uuid = Adw.EntryRow(title="UUID")
-        self._r_uuid.connect("changed", lambda *_: self._refresh_readiness())
-        self._reality_group.add(self._r_uuid)
+        # Shims so existing get_text / set_text / get_value call sites keep working
+        self._vless_entry = self._reality_editor.vless_entry
+        self._r_server = self._reality_editor.server
+        self._r_port = self._reality_editor.port
+        self._r_uuid = self._reality_editor.uuid
+        self._r_pk = self._reality_editor.public_key
+        self._r_sid = self._reality_editor.short_id
+        self._r_sni = self._reality_editor.sni
+        self._r_fp = self._reality_editor.fingerprint
+        self._r_flow = self._reality_editor.flow
+        self._r_spx = self._reality_editor.spider_x
 
-        self._r_pk = Adw.EntryRow(title="Public key (pbk)")
-        self._r_pk.connect("changed", lambda *_: self._refresh_readiness())
-        self._reality_group.add(self._r_pk)
+        self._reality_group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self._reality_group.add_css_class("reality-diagram-host")
+        self._reality_group.append(self._reality_summary_card())
+        self._cover_stack.add_named(self._reality_group, "reality")
 
-        self._r_sid = Adw.EntryRow(title="Short ID (optional)")
-        self._reality_group.add(self._r_sid)
-
-        self._r_sni = Adw.EntryRow(title="SNI / serverName")
-        self._r_sni.set_text("")
-        self._r_sni.connect("changed", lambda *_: self._on_fields_changed())
-        self._reality_group.add(self._r_sni)
-
-        self._r_fp = Adw.EntryRow(title="Fingerprint")
-        self._r_fp.set_text("chrome")
-        self._reality_group.add(self._r_fp)
-
-        self._r_flow = Adw.EntryRow(title="Flow")
-        self._r_flow.set_text("xtls-rprx-vision")
-        self._reality_group.add(self._r_flow)
-
-        box.append(self._reality_group)
-
-        # Proxy fields
+        # Proxy fields (compact; stay on main setup)
         self._proxy_group = Adw.PreferencesGroup()
         self._proxy_group.set_title("Proxy parameters")
         self._proxy_group.set_description(
@@ -701,14 +800,9 @@ class ChinaIngressPage(Gtk.Box):
         self._p_pass = Adw.PasswordEntryRow(title="Password (optional)")
         self._proxy_group.add(self._p_pass)
 
-        box.append(self._proxy_group)
-        self._proxy_group.set_visible(False)
-
-        notes_g = Adw.PreferencesGroup()
-        notes_g.set_title("Notes")
-        self._notes = Adw.EntryRow(title="Operator notes")
-        notes_g.add(self._notes)
-        box.append(notes_g)
+        self._cover_stack.add_named(self._proxy_group, "proxy")
+        self._cover_stack.set_visible_child_name("reality")
+        box.append(self._cover_stack)
 
         return box
 
@@ -768,19 +862,12 @@ class ChinaIngressPage(Gtk.Box):
         )
         self._rev_vpn_row = Adw.ComboRow(title="VPN backend")
         self._rev_vpn_row.set_model(
-            Gtk.StringList.new(["(none — add a VPN under Backends)"])
+            Gtk.StringList.new(["(none — add a VPN under Adapters)"])
         )
         self._rev_vpn_row.connect(
             "notify::selected", lambda *_: self._on_fields_changed()
         )
         vpn_g.add(self._rev_vpn_row)
-        open_vpn = Adw.ActionRow(
-            title="Manage VPN backends",
-            subtitle="WireGuard .conf or Mullvad SOCKS",
-        )
-        open_vpn.set_activatable(True)
-        open_vpn.connect("activated", lambda *_: self._nav("backends"))
-        vpn_g.add(open_vpn)
         box.append(vpn_g)
         self._rev_vpn_backend_ids: list[str] = []
 
@@ -875,8 +962,6 @@ class ChinaIngressPage(Gtk.Box):
             "notify::text", lambda *_: self._on_fields_changed()
         )
         names.add(self._rev_backend_name)
-        self._rev_notes = Adw.EntryRow(title="Operator notes")
-        names.add(self._rev_notes)
         box.append(names)
 
         export = Adw.PreferencesGroup()
@@ -912,40 +997,311 @@ class ChinaIngressPage(Gtk.Box):
         box.append(b)
         return box
 
-    # ── Readiness ─────────────────────────────────────────────────────────
+    # ── Nested sub-pages ──────────────────────────────────────────────────
 
-    def _group_readiness(self) -> Gtk.Widget:
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        head = Gtk.Label(label="4 · Readiness", xalign=0)
-        head.add_css_class("china-section-title")
-        outer.append(head)
-        sub = Gtk.Label(
-            label="Structural checks for Composition I (inbound) or III (Inverse Snowflake).",
+    def _show_view(self, name: str) -> None:
+        if hasattr(self, "_view_stack"):
+            self._view_stack.set_visible_child_name(name)
+            if name == "readiness":
+                self._refresh_readiness()
+            elif name == "main":
+                self._refresh_reality_summary()
+
+    def _show_main(self, *_a) -> None:
+        self._show_view("main")
+
+    def _show_readiness(self, *_a) -> None:
+        self._show_view("readiness")
+
+    def _show_reality(self, *_a) -> None:
+        self._show_view("reality")
+
+    # ── REALITY hop (summary card + full diagram sub-page) ───────────────
+
+    def _reality_summary_card(self) -> Gtk.Widget:
+        """Compact setup-pane card; opens the full hop diagram sub-page."""
+        btn = Gtk.Button()
+        btn.add_css_class("flat")
+        btn.add_css_class("ready-summary-card")
+        btn.add_css_class("reality-summary-card")
+        btn.set_hexpand(True)
+        btn.connect("clicked", self._show_reality)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.set_halign(Gtk.Align.FILL)
+
+        ic = Gtk.Image.new_from_icon_name("security-high-symbolic")
+        ic.set_pixel_size(22)
+        ic.add_css_class("reality-summary-icon")
+        ic.set_valign(Gtk.Align.CENTER)
+        row.append(ic)
+
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_hexpand(True)
+        title = Gtk.Label(label="REALITY hop", xalign=0)
+        title.add_css_class("ready-summary-title")
+        col.append(title)
+        self._reality_card_sub = Gtk.Label(
+            label="Open diagram to configure",
             xalign=0,
             wrap=True,
         )
-        sub.add_css_class("muted")
-        outer.append(sub)
+        self._reality_card_sub.add_css_class("ready-summary-sub")
+        col.append(self._reality_card_sub)
+        row.append(col)
 
-        self._ready_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        self._ready_list.add_css_class("china-ready-list")
-        outer.append(self._ready_list)
+        chev = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chev.set_pixel_size(14)
+        chev.add_css_class("door-card-chev")
+        chev.set_valign(Gtk.Align.CENTER)
+        row.append(chev)
 
-        self._ready_summary = Gtk.Label(label="", xalign=0, wrap=True)
-        self._ready_summary.add_css_class("china-ready-summary")
-        outer.append(self._ready_summary)
-        return outer
+        btn.set_child(row)
+        return btn
 
-    def _ready_item(self, ok: bool, text: str) -> Gtk.Widget:
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        mark = Gtk.Label(label="✓" if ok else "○")
-        mark.add_css_class("china-ready-mark")
-        mark.add_css_class("china-ready-ok" if ok else "china-ready-pending")
+    def _build_reality_page(self) -> Gtk.Widget:
+        """Full sub-page: vertical hop diagram (scrolls; never forces window size)."""
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.add_css_class("reality-page")
+        page.set_hexpand(True)
+        page.set_vexpand(True)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        header.add_css_class("pane-header")
+        header.set_hexpand(True)
+        header.set_vexpand(False)
+
+        back = Gtk.Button()
+        back.add_css_class("flat")
+        back.add_css_class("circular")
+        back.set_icon_name("go-previous-symbolic")
+        back.set_tooltip_text("Back to setup")
+        back.set_valign(Gtk.Align.CENTER)
+        back.connect("clicked", self._show_main)
+        header.append(back)
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        titles.set_hexpand(True)
+        titles.set_valign(Gtk.Align.CENTER)
+        t = Gtk.Label(label="REALITY hop", xalign=0)
+        t.add_css_class("pane-header-title")
+        titles.append(t)
+        sub = Gtk.Label(
+            label="Horizontal hop — You → REALITY → cover (scroll sideways if needed)",
+            xalign=0,
+            wrap=True,
+        )
+        sub.add_css_class("pane-header-sub")
+        titles.append(sub)
+        header.append(titles)
+        page.append(header)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        body.add_css_class("reality-page-body")
+        body.set_hexpand(True)
+        # Editor was created in _panel_direct; reparent if needed
+        editor = getattr(self, "_reality_editor", None)
+        if editor is not None:
+            parent = editor.get_parent()
+            if parent is not None:
+                parent.remove(editor)
+            body.append(editor)
+        else:
+            from widgets.reality_diagram import RealityDiagramEditor
+
+            self._reality_editor = RealityDiagramEditor(
+                on_changed=self._on_fields_changed,
+                show_import=True,
+                show_advanced=True,
+                layout="row",
+            )
+            self._reality_editor.import_btn.connect("clicked", self._on_import_vless)
+            body.append(self._reality_editor)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        actions.set_halign(Gtk.Align.CENTER)
+        actions.set_margin_top(4)
+        done = Gtk.Button(label="Done")
+        done.add_css_class("suggested-action")
+        done.connect("clicked", self._show_main)
+        actions.append(done)
+        body.append(actions)
+
+        body_scroll = scroll_body(body, margin=20)
+        body_scroll.set_vexpand(True)
+        body_scroll.set_hexpand(True)
+        page.append(body_scroll)
+        return page
+
+    def _refresh_reality_summary(self) -> None:
+        lab = getattr(self, "_reality_card_sub", None)
+        ed = getattr(self, "_reality_editor", None)
+        if lab is None or ed is None:
+            return
+        lab.set_text(ed.summary_line())
+
+    # ── Readiness (summary card + full sub-page) ──────────────────────────
+
+    def _readiness_summary_card(self) -> Gtk.Widget:
+        """Compact left-rail card that opens the readiness sub-page."""
+        btn = Gtk.Button()
+        btn.add_css_class("flat")
+        btn.add_css_class("ready-summary-card")
+        btn.set_hexpand(True)
+        btn.connect("clicked", self._show_readiness)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.set_halign(Gtk.Align.FILL)
+
+        self._ready_badge = Gtk.Label(label="—")
+        self._ready_badge.add_css_class("ready-summary-badge")
+        self._ready_badge.set_valign(Gtk.Align.CENTER)
+        row.append(self._ready_badge)
+
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_hexpand(True)
+        title = Gtk.Label(label="Readiness", xalign=0)
+        title.add_css_class("ready-summary-title")
+        col.append(title)
+        self._ready_card_sub = Gtk.Label(label="Check setup status", xalign=0, wrap=True)
+        self._ready_card_sub.add_css_class("ready-summary-sub")
+        col.append(self._ready_card_sub)
+        row.append(col)
+
+        chev = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chev.set_pixel_size(14)
+        chev.add_css_class("door-card-chev")
+        chev.set_valign(Gtk.Align.CENTER)
+        row.append(chev)
+
+        btn.set_child(row)
+        # Keep legacy attrs so refresh can still update summary text
+        self._ready_summary = self._ready_card_sub
+        self._ready_list = Gtk.Box()  # unused on main; full list lives on sub-page
+        return btn
+
+    def _build_readiness_page(self) -> Gtk.Widget:
+        """Full-screen sub-page: checklist with clear pass/fail affordances."""
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.add_css_class("ready-page")
+        page.set_hexpand(True)
+        page.set_vexpand(True)
+
+        # Header with back
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        header.add_css_class("pane-header")
+        header.set_hexpand(True)
+
+        back = Gtk.Button()
+        back.add_css_class("flat")
+        back.add_css_class("circular")
+        back.set_icon_name("go-previous-symbolic")
+        back.set_tooltip_text("Back to Territories")
+        back.set_valign(Gtk.Align.CENTER)
+        back.connect("clicked", self._show_main)
+        header.append(back)
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        titles.set_hexpand(True)
+        titles.set_valign(Gtk.Align.CENTER)
+        t = Gtk.Label(label="Readiness", xalign=0)
+        t.add_css_class("pane-header-title")
+        titles.append(t)
+        self._ready_page_sub = Gtk.Label(
+            label="Checks for the mode you selected",
+            xalign=0,
+        )
+        self._ready_page_sub.add_css_class("pane-header-sub")
+        titles.append(self._ready_page_sub)
+        header.append(titles)
+        page.append(header)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        body.add_css_class("ready-page-body")
+        body.set_halign(Gtk.Align.CENTER)
+        body.set_hexpand(True)
+
+        # Hero status
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        hero.add_css_class("ready-hero")
+        hero.set_halign(Gtk.Align.CENTER)
+
+        self._ready_hero_icon = Gtk.Label(label="…")
+        self._ready_hero_icon.add_css_class("ready-hero-icon")
+        self._ready_hero_icon.set_halign(Gtk.Align.CENTER)
+        hero.append(self._ready_hero_icon)
+
+        self._ready_hero_title = Gtk.Label(label="Checking…", xalign=0.5)
+        self._ready_hero_title.add_css_class("ready-hero-title")
+        self._ready_hero_title.set_halign(Gtk.Align.CENTER)
+        hero.append(self._ready_hero_title)
+
+        self._ready_hero_detail = Gtk.Label(label="", xalign=0.5, wrap=True)
+        self._ready_hero_detail.add_css_class("ready-hero-detail")
+        self._ready_hero_detail.set_halign(Gtk.Align.CENTER)
+        self._ready_hero_detail.set_max_width_chars(42)
+        self._ready_hero_detail.set_justify(Gtk.Justification.CENTER)
+        hero.append(self._ready_hero_detail)
+
+        self._ready_progress = Gtk.ProgressBar()
+        self._ready_progress.add_css_class("ready-progress")
+        self._ready_progress.set_hexpand(True)
+        self._ready_progress.set_size_request(280, -1)
+        hero.append(self._ready_progress)
+
+        self._ready_count = Gtk.Label(label="", xalign=0.5)
+        self._ready_count.add_css_class("ready-count")
+        self._ready_count.set_halign(Gtk.Align.CENTER)
+        hero.append(self._ready_count)
+
+        body.append(hero)
+
+        # Checklist
+        list_lab = Gtk.Label(label="Checklist", xalign=0)
+        list_lab.add_css_class("section-label")
+        list_lab.set_halign(Gtk.Align.START)
+        body.append(list_lab)
+
+        self._ready_page_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self._ready_page_list.add_css_class("ready-check-list")
+        self._ready_page_list.set_hexpand(True)
+        body.append(self._ready_page_list)
+
+        # Actions on readiness page
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        actions.set_halign(Gtk.Align.CENTER)
+        actions.set_margin_top(8)
+
+        back2 = Gtk.Button(label="Back to setup")
+        back2.add_css_class("flat")
+        back2.connect("clicked", self._show_main)
+        actions.append(back2)
+
+        self._ready_page_save = Gtk.Button(label="Save when ready")
+        self._ready_page_save.add_css_class("suggested-action")
+        self._ready_page_save.connect("clicked", self._on_save)
+        actions.append(self._ready_page_save)
+        body.append(actions)
+
+        page.append(scroll_body(body, margin=24))
+        return page
+
+    def _ready_check_row(self, ok: bool, text: str) -> Gtk.Widget:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.add_css_class("ready-check-row")
+        row.add_css_class("ready-check-ok" if ok else "ready-check-pending")
+        row.set_hexpand(True)
+
+        badge = Gtk.Label(label="✓" if ok else "!")
+        badge.add_css_class("ready-check-badge")
+        badge.add_css_class("ready-check-badge-ok" if ok else "ready-check-badge-pending")
+        badge.set_valign(Gtk.Align.CENTER)
+        row.append(badge)
+
         lab = Gtk.Label(label=text, xalign=0, wrap=True)
-        lab.add_css_class("china-ready-text")
-        lab.add_css_class("china-ready-ok" if ok else "china-ready-pending")
+        lab.add_css_class("ready-check-text")
         lab.set_hexpand(True)
-        row.append(mark)
+        lab.set_valign(Gtk.Align.CENTER)
         row.append(lab)
         return row
 
@@ -1044,22 +1400,6 @@ class ChinaIngressPage(Gtk.Box):
         ic.set_pixel_size(16)
         self._study_row.add_suffix(ic)
         g.add(self._study_row)
-
-        open_backends = Adw.ActionRow(
-            title="Open Backends",
-            subtitle="Edit any adapter in the full editor",
-        )
-        open_backends.set_activatable(True)
-        open_backends.connect("activated", lambda *_: self._nav("backends"))
-        g.add(open_backends)
-
-        open_profiles = Adw.ActionRow(
-            title="Open Profiles",
-            subtitle="All path profiles including Reach · territory",
-        )
-        open_profiles.set_activatable(True)
-        open_profiles.connect("activated", lambda *_: self._nav("profiles"))
-        g.add(open_profiles)
         return g
 
     # ── Events ────────────────────────────────────────────────────────────
@@ -1082,8 +1422,8 @@ class ChinaIngressPage(Gtk.Box):
             self._set_path_active(multi=True)
         elif idx == _TOPO_REVERSE:
             self._stack.set_visible_child_name("reverse")
-            self._step_hop.set_text("Accept\n(outside)")
-            self._step_land.set_text("Inverse\nSnowflake")
+            self._step_hop.set_text("Accept")
+            self._step_land.set_text("Peer")
             self._path_caption.set_text(
                 "Inverse Snowflake: peer client dials out → your accept → "
                 "you use VPN → SOCKS map (Export package for the peer)."
@@ -1092,8 +1432,8 @@ class ChinaIngressPage(Gtk.Box):
             self._reload_vpn_combo()
         else:
             self._stack.set_visible_child_name("direct")
-            self._step_hop.set_text("TLS cover\n→ CN")
-            self._step_land.set_text("China\nhost")
+            self._step_hop.set_text("Cover")
+            self._step_land.set_text("Host")
             self._path_caption.set_text(
                 "Composition I: you → VPN underlay → TLS cover → China host."
             )
@@ -1110,22 +1450,29 @@ class ChinaIngressPage(Gtk.Box):
             self._step_hop,
             self._step_land,
         )
+        active = direct or multi or reverse
         for chip in chips:
-            chip.remove_css_class("china-path-chip-active")
-        if direct or multi:
-            for c in chips:
-                c.add_css_class("china-path-chip-active")
-        elif reverse:
-            for c in chips:
-                c.add_css_class("china-path-chip-active")
+            if active:
+                chip.add_css_class("china-path-chip-active")
+            else:
+                chip.remove_css_class("china-path-chip-active")
 
     def _on_cover_kind(self) -> None:
-        proxy = int(self._cover_kind.get_selected()) == 1
-        self._reality_group.set_visible(not proxy)
-        self._proxy_group.set_visible(proxy)
+        # Sync hidden combo from choice cards when present
+        cards = getattr(self, "_cover_cards", None)
+        if cards is not None:
+            self._cover_kind.set_selected(1 if cards.selected_id == "proxy" else 0)
+        proxy = self._use_proxy()
+        cover = getattr(self, "_cover_stack", None)
+        if cover is not None:
+            cover.set_visible_child_name("proxy" if proxy else "reality")
+        else:
+            self._reality_group.set_visible(not proxy)
+            self._proxy_group.set_visible(proxy)
         self._on_fields_changed()
 
     def _on_fields_changed(self) -> None:
+        self._refresh_reality_summary()
         self._refresh_readiness()
         self._update_action_sensitivity()
 
@@ -1139,6 +1486,9 @@ class ChinaIngressPage(Gtk.Box):
         return self._is_direct_v1() or self._is_reverse()
 
     def _use_proxy(self) -> bool:
+        cards = getattr(self, "_cover_cards", None)
+        if cards is not None:
+            return cards.selected_id == "proxy"
         return int(self._cover_kind.get_selected()) == 1
 
     def _selected_vpn_backend(self) -> Backend | None:
@@ -1325,34 +1675,85 @@ class ChinaIngressPage(Gtk.Box):
         )
 
     def _refresh_readiness(self) -> None:
-        if not hasattr(self, "_ready_list"):
-            return
-        clear_box(self._ready_list)
         checks = self._collect_checks()
-        for ok, text in checks:
-            self._ready_list.append(self._ready_item(ok, text))
-        if self._is_wireable() and self._readiness_ok():
-            if self._is_reverse():
-                self._ready_summary.set_text(
-                    "Ready to save Inverse Snowflake profile. Export client package; "
-                    "start accept + Inverse Snowflake on M before Connect."
-                )
-            else:
-                self._ready_summary.set_text(
-                    "Ready to save. Connect needs a saved profile + core."
-                )
-            self._ready_summary.add_css_class("china-ready-ok")
-            self._ready_summary.remove_css_class("china-ready-pending")
-        elif self._is_wireable():
-            self._ready_summary.set_text("Fill required fields to enable Save.")
-            self._ready_summary.add_css_class("china-ready-pending")
-            self._ready_summary.remove_css_class("china-ready-ok")
-        else:
-            self._ready_summary.set_text(
-                "Multi-hop later — use inbound or Inverse Snowflake for Connect."
+        total = max(1, len(checks))
+        passed = sum(1 for ok, _ in checks if ok)
+        frac = passed / total
+        all_ok = self._is_wireable() and self._readiness_ok()
+
+        # Compact card on main view
+        if hasattr(self, "_ready_badge"):
+            self._ready_badge.set_text("✓" if all_ok else f"{passed}/{total}")
+            for cls in ("ready-summary-badge-ok", "ready-summary-badge-pending"):
+                self._ready_badge.remove_css_class(cls)
+            self._ready_badge.add_css_class(
+                "ready-summary-badge-ok" if all_ok else "ready-summary-badge-pending"
             )
-            self._ready_summary.add_css_class("china-ready-pending")
-            self._ready_summary.remove_css_class("china-ready-ok")
+        if hasattr(self, "_ready_card_sub"):
+            if not self._is_wireable():
+                self._ready_card_sub.set_text("Choose Host there or Peer dials out")
+            elif all_ok:
+                self._ready_card_sub.set_text("All checks passed · tap for details")
+            else:
+                self._ready_card_sub.set_text(
+                    f"{passed} of {total} checks · tap to review"
+                )
+
+        # Full readiness sub-page
+        if hasattr(self, "_ready_page_list"):
+            clear_box(self._ready_page_list)
+            for ok, text in checks:
+                self._ready_page_list.append(self._ready_check_row(ok, text))
+        if hasattr(self, "_ready_progress"):
+            self._ready_progress.set_fraction(frac)
+        if hasattr(self, "_ready_count"):
+            self._ready_count.set_text(f"{passed} of {total} checks passed")
+        if hasattr(self, "_ready_hero_icon"):
+            self._ready_hero_icon.set_text("✓" if all_ok else "…")
+            for cls in ("ready-hero-icon-ok", "ready-hero-icon-pending"):
+                self._ready_hero_icon.remove_css_class(cls)
+            self._ready_hero_icon.add_css_class(
+                "ready-hero-icon-ok" if all_ok else "ready-hero-icon-pending"
+            )
+        if hasattr(self, "_ready_hero_title"):
+            if not self._is_wireable():
+                self._ready_hero_title.set_text("Mode not ready")
+            elif all_ok:
+                self._ready_hero_title.set_text("Ready to save")
+            else:
+                self._ready_hero_title.set_text("Almost there")
+        if hasattr(self, "_ready_hero_detail"):
+            if not self._is_wireable():
+                self._ready_hero_detail.set_text(
+                    "Multi-hop is later. Pick Host there or Peer dials out on setup."
+                )
+            elif all_ok:
+                if self._is_reverse():
+                    self._ready_hero_detail.set_text(
+                        "Save the profile, export the client package, then start "
+                        "accept + agent before Connect on Home."
+                    )
+                else:
+                    self._ready_hero_detail.set_text(
+                        "Save the profile, then Connect from Home when the core is up."
+                    )
+            else:
+                self._ready_hero_detail.set_text(
+                    "Fill the remaining items below, then return to Set up to save."
+                )
+        if hasattr(self, "_ready_page_sub"):
+            mode = "Peer dials out" if self._is_reverse() else "Host there"
+            t = self._territory()
+            self._ready_page_sub.set_text(f"{t.short_name} · {mode}")
+
+        # Legacy summary label alias (if something still references styles)
+        if hasattr(self, "_ready_summary") and self._ready_summary is not None:
+            for cls in ("china-ready-ok", "china-ready-pending"):
+                self._ready_summary.remove_css_class(cls)
+            self._ready_summary.add_css_class(
+                "china-ready-ok" if all_ok else "china-ready-pending"
+            )
+
         self._update_action_sensitivity()
 
     def _update_action_sensitivity(self) -> None:
@@ -1360,6 +1761,11 @@ class ChinaIngressPage(Gtk.Box):
         ok = self._readiness_ok()
         if hasattr(self, "_save_btn"):
             self._save_btn.set_sensitive(wire and ok and not self._action_busy)
+        if hasattr(self, "_ready_page_save"):
+            self._ready_page_save.set_sensitive(wire and ok and not self._action_busy)
+            self._ready_page_save.set_label(
+                "Save profile" if (wire and ok) else "Save when ready"
+            )
         if hasattr(self, "_probe_btn"):
             self._probe_btn.set_sensitive(wire and not self._probe_busy)
         if hasattr(self, "_connect_btn"):
@@ -1528,22 +1934,28 @@ class ChinaIngressPage(Gtk.Box):
             self._toast(str(exc))
             return
         self._cover_kind.set_selected(0)
+        if hasattr(self, "_cover_cards"):
+            self._cover_cards.set_selected("reality")
         self._on_cover_kind()
-        self._r_server.set_text(data.get("reality_server") or "")
-        self._r_port.set_value(int(data.get("reality_port") or 443))
-        self._r_uuid.set_text(data.get("reality_uuid") or "")
-        self._r_pk.set_text(data.get("reality_public_key") or "")
-        self._r_sid.set_text(data.get("reality_short_id") or "")
-        self._r_sni.set_text(data.get("reality_sni") or "")
-        self._r_fp.set_text(data.get("reality_fingerprint") or "chrome")
-        self._r_flow.set_text(data.get("reality_flow") or "xtls-rprx-vision")
+        self._reality_editor.set_values(
+            server=data.get("reality_server") or "",
+            port=int(data.get("reality_port") or 443),
+            uuid=data.get("reality_uuid") or "",
+            public_key=data.get("reality_public_key") or "",
+            short_id=data.get("reality_short_id") or "",
+            sni=data.get("reality_sni") or "",
+            fingerprint=data.get("reality_fingerprint") or "chrome",
+            flow=data.get("reality_flow") or "xtls-rprx-vision",
+            spider_x=data.get("reality_spider_x") or "",
+        )
         name = (data.get("name") or "").strip()
         if name:
             self._backend_name.set_text(name)
             cur = (self._profile_name.get_text() or "").strip()
             if not cur or cur.startswith("Reach China") or cur.startswith("Reach ·"):
                 self._profile_name.set_text(f"Reach · {self._territory().short_name} · {name}")
-        self._toast("Imported REALITY parameters")
+        self._toast("Imported REALITY parameters onto the diagram")
+        self._refresh_reality_summary()
         self._refresh_readiness()
 
     def _on_save(self, *_a) -> None:
@@ -1589,14 +2001,12 @@ class ChinaIngressPage(Gtk.Box):
             (self._rev_profile_name.get_text() or "").strip()
             or f"Reach · {t.short_name} · Inverse Snowflake"
         )
-        notes = (self._rev_notes.get_text() or "").strip()
-        note_bits = [notes] if notes else []
-        note_bits.append(
+        note_bits = [
             f"path_intent={PATH_INTENT_REVERSE} · composition=reverse · "
             f"territory={t.code} · "
             f"accept={pairing.accept_host}:{pairing.accept_port} · "
             "Inverse Snowflake dial-out · VPN underlay required"
-        )
+        ]
         extra = {
             "proxy_protocol": "SOCKS5",
             "proxy_host": pairing.map_socks_host,
@@ -1676,13 +2086,11 @@ class ChinaIngressPage(Gtk.Box):
         t = self._territory()
         bname = (self._backend_name.get_text() or "").strip() or f"{t.short_name} landing"
         pname = (self._profile_name.get_text() or "").strip() or f"Reach · {t.short_name}"
-        notes = (self._notes.get_text() or "").strip()
-        note_bits = [notes] if notes else []
-        note_bits.append(
+        note_bits = [
             f"path_intent={PATH_INTENT_INBOUND} · composition=inbound · "
             f"territory={t.code} · VPN underlay required · "
             f"operator-owned {t.side_label} host"
-        )
+        ]
 
         if self._use_proxy():
             proto_idx = int(self._p_proto.get_selected())
@@ -1724,6 +2132,7 @@ class ChinaIngressPage(Gtk.Box):
                 or "chrome",
                 "reality_flow": (self._r_flow.get_text() or "").strip()
                 or "xtls-rprx-vision",
+                "reality_spider_x": (self._r_spx.get_text() or "").strip(),
                 "notes": " · ".join(note_bits),
                 "enabled": True,
             }
@@ -1998,6 +2407,8 @@ class ChinaIngressPage(Gtk.Box):
         self._backend_name.set_text(b.name)
         if b.kind == "Proxy":
             self._cover_kind.set_selected(1)
+            if hasattr(self, "_cover_cards"):
+                self._cover_cards.set_selected("proxy")
             self._on_cover_kind()
             if b.proxy_protocol in PROXY_PROTOCOLS:
                 self._p_proto.set_selected(PROXY_PROTOCOLS.index(b.proxy_protocol))
@@ -2007,19 +2418,21 @@ class ChinaIngressPage(Gtk.Box):
             self._p_pass.set_text(b.proxy_password or "")
         else:
             self._cover_kind.set_selected(0)
+            if hasattr(self, "_cover_cards"):
+                self._cover_cards.set_selected("reality")
             self._on_cover_kind()
-            self._r_server.set_text(b.reality_server or "")
-            self._r_port.set_value(b.reality_port or 443)
-            self._r_uuid.set_text(b.reality_uuid or "")
-            self._r_pk.set_text(b.reality_public_key or "")
-            self._r_sid.set_text(b.reality_short_id or "")
-            self._r_sni.set_text(b.reality_sni or "")
-            self._r_fp.set_text(b.reality_fingerprint or "chrome")
-            self._r_flow.set_text(b.reality_flow or "xtls-rprx-vision")
-        if b.notes:
-            # strip our annotation for display
-            note = b.notes.split("path_intent=")[0].strip(" ·")
-            self._notes.set_text(note)
+            self._reality_editor.set_values(
+                server=b.reality_server or "",
+                port=b.reality_port or 443,
+                uuid=b.reality_uuid or "",
+                public_key=b.reality_public_key or "",
+                short_id=b.reality_short_id or "",
+                sni=b.reality_sni or "",
+                fingerprint=b.reality_fingerprint or "chrome",
+                flow=b.reality_flow or "xtls-rprx-vision",
+                spider_x=getattr(b, "reality_spider_x", "") or "",
+            )
+            self._refresh_reality_summary()
 
     def reload(self) -> None:
         """Called when navigating back or data changes elsewhere."""

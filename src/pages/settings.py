@@ -1,8 +1,9 @@
-"""Settings — comprehensive Reach configuration."""
+"""Settings — dashboard of section tiles; each opens a sub-page."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from gi.repository import Adw, Gtk
 
@@ -10,7 +11,78 @@ from app_config import APPLICATION_VERSION, GITHUB_URL
 from core.client import default_socket_path
 from core.updates import DEFAULT_CHECK_INTERVAL_HOURS
 from services import Services
-from widgets.chrome import page_header, scroll_body
+from widgets.chrome import scroll_body
+from widgets.transitions import SUBPAGE_MS, slide_stack
+
+
+@dataclass(frozen=True)
+class _Section:
+    id: str
+    title: str
+    subtitle: str
+    icon: str
+    # Optional brand asset under data/assets/ (SVG/PNG) instead of icon theme
+    asset: str = ""
+
+
+_SECTIONS: tuple[_Section, ...] = (
+    _Section(
+        "plugins",
+        "Plugins",
+        "Privacy · Lab · Operate posture",
+        "application-x-addon-symbolic",
+    ),
+    _Section(
+        "core",
+        "Spectre core",
+        "Socket · token · reconnect",
+        "network-server-symbolic",
+        asset="spectre.svg",
+    ),
+    _Section(
+        "session",
+        "Session",
+        "Startup · tray · notifications",
+        "system-run-symbolic",
+    ),
+    _Section(
+        "network",
+        "Network",
+        "Routing · kill switch · DNS",
+        "network-workgroup-symbolic",
+    ),
+    _Section(
+        "privacy",
+        "Privacy",
+        "WebRTC · UDP policy",
+        "security-high-symbolic",
+    ),
+    _Section(
+        "mullvad",
+        "Mullvad",
+        "Optional underlay control",
+        "network-vpn-symbolic",
+        asset="mullvad.png",
+    ),
+    _Section(
+        "updates",
+        "Updates",
+        "GitHub release checks",
+        "software-update-available-symbolic",
+    ),
+    _Section(
+        "logging",
+        "Logging",
+        "Level · file output",
+        "utilities-terminal-symbolic",
+    ),
+    _Section(
+        "advanced",
+        "Advanced",
+        "Bind · MTU",
+        "preferences-other-symbolic",
+    ),
+)
 
 
 class SettingsPage(Gtk.Box):
@@ -21,53 +93,366 @@ class SettingsPage(Gtk.Box):
         parent_window: Gtk.Window | None = None,
         on_toast: Callable[[str], None] | None = None,
         on_check_updates: Callable[[], None] | None = None,
+        on_plugins_changed: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("page")
+        self.add_css_class("settings-page")
         self.set_hexpand(True)
         self.set_vexpand(True)
         self._services = services
         self._parent_window = parent_window
         self._on_toast = on_toast
         self._on_check_updates = on_check_updates
+        self._on_plugins_changed = on_plugins_changed
         self._cfg = services.config
+        self._section_pages: dict[str, Gtk.Widget] = {}
+        self._plugin_switches: dict[str, Adw.SwitchRow] = {}
+
+        self._view = slide_stack(
+            duration_ms=SUBPAGE_MS,
+            left_right=True,
+            hhomogeneous=True,
+            vhomogeneous=True,
+            css_class="settings-view-stack",
+        )
+        self._view.set_hexpand(True)
+        self._view.set_vexpand(True)
+
+        # Build preference groups first so Save always has live widgets
+        groups = {
+            "plugins": self._group_plugins(),
+            "core": self._group_core(),
+            "session": self._group_session(),
+            "network": self._group_network(),
+            "privacy": self._group_privacy(),
+            "mullvad": self._group_mullvad(),
+            "updates": self._group_updates(),
+            "logging": self._group_logging(),
+            "advanced": self._group_advanced(),
+        }
+
+        self._view.add_named(self._build_dashboard(), "main")
+        for sec in _SECTIONS:
+            page = self._build_section_page(sec, groups[sec.id])
+            self._section_pages[sec.id] = page
+            self._view.add_named(page, sec.id)
+
+        self.append(self._view)
+
+    # ── Dashboard ─────────────────────────────────────────────────
+
+    def _build_dashboard(self) -> Gtk.Widget:
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.add_css_class("settings-dashboard")
+        page.set_hexpand(True)
+        page.set_vexpand(True)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        header.add_css_class("pane-header")
+        header.set_hexpand(True)
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        titles.set_hexpand(True)
+        titles.set_valign(Gtk.Align.CENTER)
+        t = Gtk.Label(label="Settings", xalign=0)
+        t.add_css_class("pane-header-title")
+        titles.append(t)
+        sub = Gtk.Label(
+            label="Pick a category",
+            xalign=0,
+        )
+        sub.add_css_class("pane-header-sub")
+        titles.append(sub)
+        header.append(titles)
 
         save = Gtk.Button(label="Save")
         save.add_css_class("suggested-action")
+        save.set_valign(Gtk.Align.CENTER)
         save.connect("clicked", self._on_save)
-        self.append(
-            page_header(
-                "Settings",
-                subtitle="Core socket, routing, Mullvad, tray, updates",
-                end=save,
-            )
-        )
-
-        # Readable column width on wide desktops (not edge-to-edge forms).
-        outer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        outer.set_hexpand(True)
-        outer.set_halign(Gtk.Align.CENTER)
+        header.append(save)
+        page.append(header)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        body.add_css_class("page-body")
-        body.add_css_class("settings-column")
-        body.set_valign(Gtk.Align.START)
-        body.set_size_request(520, -1)
+        body.add_css_class("settings-dash-body")
+        body.set_halign(Gtk.Align.CENTER)
         body.set_hexpand(True)
 
-        body.append(self._group_core())
-        body.append(self._group_session())
-        body.append(self._group_mullvad())
-        body.append(self._group_network())
-        body.append(self._group_privacy())
-        body.append(self._group_updates())
-        body.append(self._group_logging())
-        body.append(self._group_advanced())
+        grid = Gtk.FlowBox()
+        grid.add_css_class("settings-tile-grid")
+        grid.set_selection_mode(Gtk.SelectionMode.NONE)
+        grid.set_max_children_per_line(2)
+        grid.set_min_children_per_line(1)
+        grid.set_homogeneous(True)
+        grid.set_column_spacing(12)
+        grid.set_row_spacing(12)
+        grid.set_hexpand(True)
+        grid.set_valign(Gtk.Align.START)
 
-        outer.append(body)
-        self.append(scroll_body(outer, margin=16))
+        for sec in _SECTIONS:
+            cell = Gtk.FlowBoxChild()
+            cell.set_child(self._make_tile(sec))
+            grid.append(cell)
+        body.append(grid)
 
-    # ── Groups ────────────────────────────────────────────────────
+        page.append(scroll_body(body, margin=20))
+        return page
+
+    def _icon_badge(
+        self,
+        icon_name: str,
+        *,
+        size: int = 28,
+        privacy: bool = False,
+        section: bool = False,
+        asset: str = "",
+    ) -> Gtk.Widget:
+        """Square badge with the icon centered on both axes."""
+        wrap = Gtk.CenterBox()
+        wrap.add_css_class(
+            "settings-section-icon-wrap" if section else "settings-tile-icon-wrap"
+        )
+        if privacy:
+            wrap.add_css_class("settings-tile-icon-privacy")
+        side = 40 if section else 48
+        wrap.set_size_request(side, side)
+        wrap.set_halign(Gtk.Align.CENTER)
+        wrap.set_valign(Gtk.Align.CENTER)
+
+        ic = self._load_icon_image(icon_name, size=size, asset=asset)
+        wrap.set_center_widget(ic)
+        return wrap
+
+    def _load_icon_image(
+        self, icon_name: str, *, size: int, asset: str = ""
+    ) -> Gtk.Image:
+        """Theme icon, or brand SVG/PNG from data/assets (e.g. Spectre, Mullvad)."""
+        if asset:
+            from pathlib import Path
+
+            from gi.repository import Gdk, GdkPixbuf, GLib
+
+            from app_config import project_root
+
+            assets_dir = project_root() / "data" / "assets"
+            candidates: list[Path] = []
+            primary = assets_dir / asset
+            candidates.append(primary)
+            if asset.endswith(".svg"):
+                candidates.append(primary.with_suffix(".png"))
+            elif asset.endswith(".png"):
+                candidates.append(primary.with_suffix(".svg"))
+
+            scale = 1
+            display = Gdk.Display.get_default()
+            if display is not None:
+                mons = display.get_monitors()
+                if mons.get_n_items() > 0:
+                    mon = mons.get_item(0)
+                    if mon is not None:
+                        scale = max(1, int(mon.get_scale_factor()))
+
+            asset_l = asset.lower()
+            for path in candidates:
+                if not path.is_file():
+                    continue
+                try:
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_size(
+                        str(path), size * scale, size * scale
+                    )
+                except GLib.Error:
+                    continue
+                # Monochrome brand marks: recolor to match symbolic icons (#c7d4ee)
+                if "spectre" in asset_l or "mullvad" in asset_l:
+                    pb = self._recolor_mono_pixbuf(pb, 199, 212, 238)
+                texture = Gdk.Texture.new_for_pixbuf(pb)
+                ic = Gtk.Image.new_from_paintable(texture)
+                ic.set_pixel_size(size)
+                ic.set_size_request(size, size)
+                ic.add_css_class("settings-tile-icon")
+                if "mullvad" in asset_l:
+                    # Same mark as path Mullvad SOCKS; themed for Settings
+                    ic.add_css_class("settings-tile-icon-mullvad")
+                    ic.add_css_class("path-node-icon-mullvad")
+                elif "spectre" in asset_l:
+                    ic.add_css_class("settings-tile-icon-spectre")
+                else:
+                    ic.add_css_class("settings-tile-icon-asset")
+                ic.set_halign(Gtk.Align.CENTER)
+                ic.set_valign(Gtk.Align.CENTER)
+                return ic
+
+        ic = Gtk.Image.new_from_icon_name(icon_name)
+        ic.set_pixel_size(size)
+        ic.add_css_class("settings-tile-icon")
+        ic.set_halign(Gtk.Align.CENTER)
+        ic.set_valign(Gtk.Align.CENTER)
+        return ic
+
+    @staticmethod
+    def _recolor_mono_pixbuf(pb, r: int, g: int, b: int):
+        """Tint opaque pixels of a monochrome mark to (r,g,b), keep alpha."""
+        from gi.repository import GdkPixbuf
+
+        # Work on RGBA
+        if pb.get_n_channels() < 4 or not pb.get_has_alpha():
+            pb = pb.add_alpha(False, 0, 0, 0)
+        pb = pb.copy()
+        w, h = pb.get_width(), pb.get_height()
+        n = pb.get_n_channels()
+        rowstride = pb.get_rowstride()
+        pixels = pb.get_pixels()
+        # get_pixels() may be read-only memoryview — write via bytearray
+        buf = bytearray(pixels)
+        for y in range(h):
+            row = y * rowstride
+            for x in range(w):
+                i = row + x * n
+                a = buf[i + 3] if n >= 4 else 255
+                if a < 8:
+                    continue
+                # Preserve anti-aliasing: scale theme color by source luminance
+                src = buf[i]
+                # source is white-ish glyph; use alpha as coverage
+                buf[i] = r
+                buf[i + 1] = g
+                buf[i + 2] = b
+                # keep original alpha (src unused but available for future)
+                _ = src
+        # Build new pixbuf from buffer
+        return GdkPixbuf.Pixbuf.new_from_data(
+            bytes(buf),
+            GdkPixbuf.Colorspace.RGB,
+            True,
+            8,
+            w,
+            h,
+            rowstride,
+        )
+
+    def _make_tile(self, sec: _Section) -> Gtk.Widget:
+        btn = Gtk.Button()
+        btn.add_css_class("flat")
+        btn.add_css_class("settings-tile")
+        btn.set_hexpand(True)
+        btn.connect("clicked", lambda *_: self._show_section(sec.id))
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        row.set_halign(Gtk.Align.FILL)
+
+        icon_wrap = self._icon_badge(
+            sec.icon,
+            size=28,
+            privacy=sec.id == "privacy",
+            asset=sec.asset,
+        )
+        icon_wrap.set_valign(Gtk.Align.CENTER)
+        row.append(icon_wrap)
+
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        col.set_hexpand(True)
+        col.set_valign(Gtk.Align.CENTER)
+        title = Gtk.Label(label=sec.title, xalign=0)
+        title.add_css_class("settings-tile-title")
+        col.append(title)
+        sub = Gtk.Label(label=sec.subtitle, xalign=0, wrap=True)
+        sub.add_css_class("settings-tile-sub")
+        col.append(sub)
+        row.append(col)
+
+        chev = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chev.set_pixel_size(14)
+        chev.add_css_class("settings-tile-chev")
+        chev.set_valign(Gtk.Align.CENTER)
+        row.append(chev)
+
+        btn.set_child(row)
+        return btn
+
+    def _build_section_page(self, sec: _Section, group: Gtk.Widget) -> Gtk.Widget:
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.add_css_class("settings-section-page")
+        page.set_hexpand(True)
+        page.set_vexpand(True)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        header.add_css_class("pane-header")
+        header.set_hexpand(True)
+
+        back = Gtk.Button()
+        back.add_css_class("flat")
+        back.add_css_class("circular")
+        back.set_icon_name("go-previous-symbolic")
+        back.set_tooltip_text("Back to Settings")
+        back.set_valign(Gtk.Align.CENTER)
+        back.connect("clicked", self._show_main)
+        header.append(back)
+
+        icon_wrap = self._icon_badge(
+            sec.icon,
+            size=22,
+            privacy=sec.id == "privacy",
+            section=True,
+            asset=sec.asset,
+        )
+        icon_wrap.set_valign(Gtk.Align.CENTER)
+        header.append(icon_wrap)
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        titles.set_hexpand(True)
+        titles.set_valign(Gtk.Align.CENTER)
+        t = Gtk.Label(label=sec.title, xalign=0)
+        t.add_css_class("pane-header-title")
+        titles.append(t)
+        s = Gtk.Label(label=sec.subtitle, xalign=0)
+        s.add_css_class("pane-header-sub")
+        titles.append(s)
+        header.append(titles)
+
+        save = Gtk.Button(label="Save")
+        save.add_css_class("suggested-action")
+        save.set_valign(Gtk.Align.CENTER)
+        save.connect("clicked", self._on_save)
+        header.append(save)
+        page.append(header)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        body.add_css_class("settings-section-body")
+        body.set_halign(Gtk.Align.CENTER)
+        body.set_hexpand(True)
+        body.set_size_request(480, -1)
+        body.append(group)
+
+        done_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        done_row.set_halign(Gtk.Align.CENTER)
+        done_row.set_margin_top(8)
+        back2 = Gtk.Button(label="Back to dashboard")
+        back2.add_css_class("flat")
+        back2.connect("clicked", self._show_main)
+        done_row.append(back2)
+        body.append(done_row)
+
+        page.append(scroll_body(body, margin=20))
+        return page
+
+    def _show_main(self, *_a) -> None:
+        self._view.set_visible_child_name("main")
+
+    def show_section(self, section_id: str) -> None:
+        """Open a settings category (e.g. ``plugins``) or dashboard (``main``)."""
+        sid = (section_id or "main").strip()
+        if sid in ("", "main", "hub", "home", "dashboard"):
+            self._view.set_visible_child_name("main")
+        elif sid in self._section_pages:
+            self._view.set_visible_child_name(sid)
+        else:
+            self._view.set_visible_child_name("main")
+
+    def _show_section(self, section_id: str) -> None:
+        if self._view.get_child_by_name(section_id) is not None:
+            self._view.set_visible_child_name(section_id)
+
+    # ── Preference groups (unchanged field model) ─────────────────
 
     def _group_core(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
@@ -77,7 +462,6 @@ class SettingsPage(Gtk.Box):
             f"Default socket: {default_socket_path()}"
         )
 
-        # Note: Adw.EntryRow has no "subtitle" on older libadwaita — only title.
         self._socket = Adw.EntryRow(title="Socket path (empty = default)")
         self._socket.set_text(self._cfg.core_socket)
         if hasattr(self._socket, "set_show_apply_button"):
@@ -194,7 +578,6 @@ class SettingsPage(Gtk.Box):
         )
         g.add(self._update_interval)
 
-        # Action row: Check now
         check_row = Adw.ActionRow(title="Check now")
         last = (self._cfg.last_update_check or "").strip()
         check_row.set_subtitle(
@@ -211,7 +594,6 @@ class SettingsPage(Gtk.Box):
         return g
 
     def _on_check_now(self, *_a) -> None:
-        # Persist toggle/interval first so the checker sees current prefs
         self._apply_update_fields()
         self._services.save_config()
         if self._on_check_updates:
@@ -246,7 +628,6 @@ class SettingsPage(Gtk.Box):
         )
 
         st = mv.probe()
-        # Avoid a loud “Disconnected” when the CLI is present but unused.
         if not st.available:
             status_sub = "CLI not installed — integration inactive"
         elif st.connected:
@@ -490,6 +871,194 @@ class SettingsPage(Gtk.Box):
         g.add(self._mtu)
         return g
 
+    def _group_plugins(self) -> Gtk.Widget:
+        """Posture presets + built-in packs + Operate suite switch."""
+        from core.plugins import (
+            PLUGINS,
+            enabled_summary,
+            normalize_enabled,
+            preset_lab,
+            preset_operate,
+            preset_privacy,
+        )
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        box.add_css_class("settings-plugins")
+
+        intro = Gtk.Label(
+            label=(
+                "Path console by default. Lab packs add measurement. "
+                "Operate unlocks marketplace tools (Hogwarts C2) on the rail."
+            ),
+            wrap=True,
+            xalign=0,
+        )
+        intro.add_css_class("muted")
+        intro.add_css_class("settings-plugins-intro")
+        box.append(intro)
+
+        # Active configuration (emphasized) — not the preset buttons
+        active_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        active_lab = Gtk.Label(label="Active configuration", xalign=0)
+        active_lab.add_css_class("section-label")
+        active_row.append(active_lab)
+        self._plugins_summary = Gtk.Label(xalign=0, wrap=True)
+        self._plugins_summary.add_css_class("settings-plugins-summary")
+        active_row.append(self._plugins_summary)
+        box.append(active_row)
+
+        # Presets — plain actions (no permanent "suggested" highlight)
+        preset_lab_w = Gtk.Label(label="Apply preset", xalign=0)
+        preset_lab_w.add_css_class("section-label")
+        box.append(preset_lab_w)
+
+        preset_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        preset_row.set_halign(Gtk.Align.START)
+        preset_row.add_css_class("settings-plugins-presets")
+        self._preset_btns: dict[str, Gtk.Button] = {}
+        for label, factory, operate in (
+            ("Privacy", preset_privacy, False),
+            ("Lab", preset_lab, False),
+            ("Operate", preset_operate, True),
+        ):
+            btn = Gtk.Button(label=label)
+            btn.add_css_class("flat")
+            btn.add_css_class("pill")
+            btn.add_css_class("settings-plugins-preset-btn")
+            btn.set_tooltip_text(
+                {
+                    "Privacy": "Core path console only — no packs, no Operate rail",
+                    "Lab": "Path fingerprint + lab companions (still no C2 rail)",
+                    "Operate": "Lab packs + Operate rail (marketplace, Hogwarts, …)",
+                }[label]
+            )
+            btn.connect(
+                "clicked",
+                lambda _b, fn=factory, op=operate: self._apply_plugin_preset(
+                    fn(), operate=op
+                ),
+            )
+            self._preset_btns[label] = btn
+            preset_row.append(btn)
+        box.append(preset_row)
+
+        # Operate suite master switch
+        op_g = Adw.PreferencesGroup()
+        op_g.set_title("Operate suite")
+        op_g.set_description(
+            "When on: Plugins marketplace and C2 tools appear under Operate on the "
+            "left rail. Path pages stay primary either way."
+        )
+        self._operate_switch = Adw.SwitchRow(
+            title="Enable Operate",
+            subtitle="Marketplace · Hogwarts · future operator plugins",
+        )
+        self._operate_switch.set_active(
+            bool(getattr(self._cfg, "operate_enabled", False))
+        )
+        self._operate_switch.set_tooltip_text(
+            "Off = path console (Privacy/Lab). On = unlock operator tools on the rail."
+        )
+        self._operate_switch.connect(
+            "notify::active",
+            lambda *_a: self._refresh_plugins_summary(),
+        )
+        op_g.add(self._operate_switch)
+        box.append(op_g)
+
+        # Catalog
+        g = Adw.PreferencesGroup()
+        g.set_title("Built-in packs")
+        g.set_description(
+            "Lab measurement packs. Toggle, then Save. "
+            "Marketplace plugins install from the Operate → Plugins page."
+        )
+        enabled = set(normalize_enabled(self._cfg.plugins_enabled))
+        self._plugin_switches.clear()
+        for p in PLUGINS:
+            row = Adw.SwitchRow(
+                title=p.title,
+                subtitle=f"Lab · {p.tagline}",
+            )
+            row.set_active(p.id in enabled)
+            row.set_tooltip_text(p.description)
+            row.connect(
+                "notify::active",
+                lambda *_a: self._refresh_plugins_summary(),
+            )
+            self._plugin_switches[p.id] = row
+            g.add(row)
+        box.append(g)
+
+        self._refresh_plugins_summary()
+        return box
+
+    def _apply_plugin_preset(self, ids: list[str], *, operate: bool = False) -> None:
+        want = set(ids)
+        for pid, row in self._plugin_switches.items():
+            row.set_active(pid in want)
+        if getattr(self, "_operate_switch", None) is not None:
+            self._operate_switch.set_active(bool(operate))
+        self._refresh_plugins_summary()
+        if self._on_toast:
+            from core.plugins import enabled_summary
+
+            self._on_toast(
+                f"Preset · {enabled_summary(ids, operate_enabled=operate)} (Save to apply)"
+            )
+
+    def _collect_plugins_enabled(self) -> list[str]:
+        from core.plugins import normalize_enabled
+
+        return normalize_enabled(
+            pid for pid, row in self._plugin_switches.items() if row.get_active()
+        )
+
+    def _collect_operate_enabled(self) -> bool:
+        sw = getattr(self, "_operate_switch", None)
+        if sw is not None:
+            return bool(sw.get_active())
+        return bool(getattr(self._cfg, "operate_enabled", False))
+
+    def _refresh_plugins_summary(self) -> None:
+        from core.plugins import (
+            enabled_summary,
+            normalize_enabled,
+            preset_lab,
+            preset_operate,
+            preset_privacy,
+        )
+
+        if getattr(self, "_plugins_summary", None) is None:
+            return
+        # Prefer live switches when built
+        if self._plugin_switches:
+            ids = self._collect_plugins_enabled()
+        else:
+            ids = list(self._cfg.plugins_enabled or [])
+        operate = self._collect_operate_enabled()
+        self._plugins_summary.set_text(
+            enabled_summary(ids, operate_enabled=operate)
+        )
+
+        # Mark which preset matches current switches + operate flag
+        cur = set(normalize_enabled(ids))
+        match = None
+        if not operate and cur == set(preset_privacy()):
+            match = "Privacy"
+        elif not operate and cur == set(preset_lab()):
+            match = "Lab"
+        elif operate and cur == set(preset_operate()):
+            match = "Operate"
+        # Partial Operate (operate on but different packs) still highlight Operate
+        elif operate:
+            match = "Operate"
+        for name, btn in getattr(self, "_preset_btns", {}).items():
+            if name == match:
+                btn.add_css_class("settings-plugins-preset-active")
+            else:
+                btn.remove_css_class("settings-plugins-preset-active")
+
     def _on_save(self, *_a) -> None:
         cfg = self._services.config
         cfg.core_socket = self._socket.get_text().strip()
@@ -521,13 +1090,15 @@ class SettingsPage(Gtk.Box):
         self._apply_update_fields()
         cfg.bind_address = self._bind.get_text().strip() or "127.0.0.1"
         cfg.mtu = int(self._mtu.get_value())
+        prev_plugins = list(cfg.plugins_enabled or [])
+        prev_operate = bool(getattr(cfg, "operate_enabled", False))
+        cfg.plugins_enabled = self._collect_plugins_enabled()
+        cfg.operate_enabled = self._collect_operate_enabled()
+        self._refresh_plugins_summary()
 
         self._services.save_config()
-        # Apply tray on/off immediately so a broken icon can be removed without restart
         app = None
         try:
-            from gi.repository import Gtk
-
             win = self.get_root() if hasattr(self, "get_root") else None
             if win is not None and hasattr(win, "get_application"):
                 app = win.get_application()
@@ -538,10 +1109,28 @@ class SettingsPage(Gtk.Box):
                 app.apply_tray_settings()
             except Exception:
                 pass
+        posture_changed = (
+            prev_plugins != cfg.plugins_enabled or prev_operate != cfg.operate_enabled
+        )
+        if posture_changed and self._on_plugins_changed:
+            try:
+                self._on_plugins_changed()
+            except Exception:
+                pass
         if self._on_toast:
             msg = self._services.with_reconnect_hint("Settings saved")
             if not self._services.config.tray_enabled:
                 msg = "Settings saved · tray icon removed"
             elif self._services.config.tray_enabled:
                 msg = self._services.with_reconnect_hint("Settings saved · tray on")
+            if posture_changed:
+                from core.plugins import enabled_summary
+
+                msg = (
+                    "Settings saved · "
+                    + enabled_summary(
+                        cfg.plugins_enabled,
+                        operate_enabled=bool(cfg.operate_enabled),
+                    )
+                )
             self._on_toast(msg)

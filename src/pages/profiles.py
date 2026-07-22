@@ -23,6 +23,7 @@ class ProfilesPage(Gtk.Box):
         parent_window: Gtk.Window | None = None,
         on_changed: Callable[[], None] | None = None,
         on_toast: Callable[[str], None] | None = None,
+        embedded: bool = False,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("page")
@@ -33,19 +34,21 @@ class ProfilesPage(Gtk.Box):
         self._parent_window = parent_window
         self._on_changed = on_changed
         self._on_toast = on_toast
+        self._embedded = embedded
 
-        new_btn = Gtk.Button()
-        new_btn.set_icon_name("list-add-symbolic")
-        new_btn.add_css_class("flat")
-        new_btn.set_tooltip_text("New path")
-        new_btn.connect("clicked", self._on_new)
-        self.append(
-            page_header(
-                "Paths",
-                subtitle="Recipes of hops. Each hop uses an adapter.",
-                end=new_btn,
+        if not embedded:
+            new_btn = Gtk.Button()
+            new_btn.set_icon_name("list-add-symbolic")
+            new_btn.add_css_class("flat")
+            new_btn.set_tooltip_text("New path")
+            new_btn.connect("clicked", self._on_new)
+            self.append(
+                page_header(
+                    "Paths",
+                    subtitle="Recipes of hops. Each hop uses an adapter.",
+                    end=new_btn,
+                )
             )
-        )
 
         split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         split.add_css_class("master-detail")
@@ -60,7 +63,7 @@ class ProfilesPage(Gtk.Box):
         master.set_vexpand(True)
 
         self._empty = Gtk.Label(
-            label="No paths yet.\nCreate one, or open Doors.",
+            label="No paths yet.\nCreate one, or open Territories.",
             justify=Gtk.Justification.CENTER,
         )
         self._empty.add_css_class("muted")
@@ -68,10 +71,12 @@ class ProfilesPage(Gtk.Box):
         self._empty.set_margin_top(16)
         master.append(self._empty)
 
-        list_scroll = Gtk.ScrolledWindow()
-        list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        list_scroll.set_vexpand(True)
-        list_scroll.set_hexpand(True)
+        from widgets.scroll import scrolled_window
+
+        list_scroll = scrolled_window(
+            h_policy=Gtk.PolicyType.NEVER,
+            v_policy=Gtk.PolicyType.AUTOMATIC,
+        )
         self._list = ProfileList(
             on_selected=self._picked,
             on_activate=self._edit_id,
@@ -90,6 +95,15 @@ class ProfilesPage(Gtk.Box):
         detail.set_hexpand(True)
         detail.set_vexpand(True)
 
+        from widgets.transitions import PANEL_MS, crossfade_stack
+
+        self._detail_stack = crossfade_stack(
+            duration_ms=PANEL_MS,
+            hhomogeneous=True,
+            vhomogeneous=True,
+            css_class="detail-stack",
+        )
+
         self._detail_empty = Gtk.Label(
             label="Select a path, or create one.",
             justify=Gtk.Justification.CENTER,
@@ -97,7 +111,7 @@ class ProfilesPage(Gtk.Box):
         self._detail_empty.add_css_class("muted")
         self._detail_empty.set_valign(Gtk.Align.CENTER)
         self._detail_empty.set_vexpand(True)
-        detail.append(self._detail_empty)
+        self._detail_stack.add_named(self._detail_empty, "empty")
 
         self._detail_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self._detail_body.add_css_class("detail-inner")
@@ -105,7 +119,6 @@ class ProfilesPage(Gtk.Box):
         self._detail_body.set_vexpand(True)
         self._detail_body.set_halign(Gtk.Align.CENTER)
         self._detail_body.set_valign(Gtk.Align.CENTER)
-        self._detail_body.set_visible(False)
         self._detail_body.set_size_request(360, -1)
 
         self._detail_name = Gtk.Label(label="", xalign=0.5)
@@ -167,18 +180,11 @@ class ProfilesPage(Gtk.Box):
         actions.append(self._del_btn)
         self._detail_body.append(actions)
 
-        detail.append(scroll_body(self._detail_body, margin=16))
-        # scroll_body always visible — toggle inner visibility via detail_empty
-        # Actually scroll_body wraps detail_body - need detail_body visibility.
-        # Put detail_body outside scroll when empty? Simpler: always show scroll
-        # but toggle children.
+        self._detail_stack.add_named(scroll_body(self._detail_body, margin=16), "body")
+        self._detail_stack.set_visible_child_name("empty")
+        detail.append(self._detail_stack)
         split.append(detail)
         self.append(split)
-
-        # Fix: scroll_body already contains detail_body; empty sits alongside
-        # Rebuild detail pane structure cleanly - empty and body as siblings
-        # Currently I appended both empty and scroll(detail_body) to detail.
-        # Good - toggle visible on each.
 
         self.reload()
 
@@ -200,14 +206,12 @@ class ProfilesPage(Gtk.Box):
     def _show_detail(self, profile_id: str | None) -> None:
         profile = self._services.profiles.get(profile_id) if profile_id else None
         has = profile is not None
-        self._detail_empty.set_visible(not has)
-        self._detail_body.set_visible(has)
-        # scroll parent of detail_body
-        parent = self._detail_body.get_parent()
-        while parent is not None and not isinstance(parent, Gtk.ScrolledWindow):
-            parent = parent.get_parent()
-        if parent is not None:
-            parent.set_visible(has)
+        stack = getattr(self, "_detail_stack", None)
+        if stack is not None:
+            stack.set_visible_child_name("body" if has else "empty")
+        else:
+            self._detail_empty.set_visible(not has)
+            self._detail_body.set_visible(has)
 
         self._edit_btn.set_sensitive(has)
         self._del_btn.set_sensitive(has)
@@ -284,6 +288,10 @@ class ProfilesPage(Gtk.Box):
         self._toast(f"Active path → {p.name if p else 'path'}")
         if self._on_changed:
             self._on_changed()
+
+    def open_new(self) -> None:
+        """Public entry for parent hubs (Paths → New path)."""
+        self._on_new()
 
     def _on_new(self, *_a) -> None:
         dialog = ProfileEditorDialog(

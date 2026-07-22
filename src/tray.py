@@ -154,18 +154,8 @@ def icon_file_for_state(state: CoreState) -> str:
     return ""
 
 
-def _png_to_pixmap(path: str, size: int = 32) -> list[tuple[int, int, bytes]]:
-    if not path or not Path(path).is_file():
-        return []
-    try:
-        import gi
-
-        gi.require_version("GdkPixbuf", "2.0")
-        from gi.repository import GdkPixbuf
-
-        pb = GdkPixbuf.Pixbuf.new_from_file_at_size(path, size, size)
-    except Exception:
-        return []
+def _pixbuf_to_pixmap(pb) -> list[tuple[int, int, bytes]]:
+    """Convert a GdkPixbuf to StatusNotifier IconPixmap ARGB32 rows."""
     if pb is None:
         return []
     if pb.get_n_channels() == 3:
@@ -183,6 +173,236 @@ def _png_to_pixmap(path: str, size: int = 32) -> list[tuple[int, int, bytes]]:
             o = (y * w + x) * 4
             struct.pack_into(">BBBB", out, o, a, r, g, b)
     return [(w, h, bytes(out))]
+
+
+def _png_to_pixmap(path: str, size: int = 32) -> list[tuple[int, int, bytes]]:
+    if not path or not Path(path).is_file():
+        return []
+    try:
+        import gi
+
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_size(path, size, size)
+    except Exception:
+        return []
+    return _pixbuf_to_pixmap(pb)
+
+
+# ── Animated lock frames (color fade + shackle open/close) ─────────
+
+_LOCK_GREEN = (22, 163, 74)  # #16a34a connected
+_LOCK_AMBER = (217, 119, 6)  # #d97706 mid
+_LOCK_RED = (220, 38, 38)  # #dc2626 disconnected
+_KEY_GREEN = (5, 46, 22)
+_KEY_RED = (69, 10, 10)
+
+_ANIM_FRAMES = 20
+_ANIM_FRAME_MS = 40  # ~800ms total — long enough to read the color fade
+
+
+def _lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
+def _lerp_rgb(
+    c0: tuple[int, int, int], c1: tuple[int, int, int], t: float
+) -> tuple[int, int, int]:
+    t = max(0.0, min(1.0, t))
+    return (
+        int(_lerp(c0[0], c1[0], t)),
+        int(_lerp(c0[1], c1[1], t)),
+        int(_lerp(c0[2], c1[2], t)),
+    )
+
+
+def _ease_in_out(t: float) -> float:
+    """Smoothstep for softer color / shackle motion."""
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _lock_color_at(t: float) -> tuple[int, int, int]:
+    """t=0 locked green → t=1 unlocked red, through amber."""
+    t = _ease_in_out(t)
+    if t < 0.5:
+        return _lerp_rgb(_LOCK_GREEN, _LOCK_AMBER, t * 2.0)
+    return _lerp_rgb(_LOCK_AMBER, _LOCK_RED, (t - 0.5) * 2.0)
+
+
+def _keyhole_color_at(t: float) -> tuple[int, int, int]:
+    return _lerp_rgb(_KEY_GREEN, _KEY_RED, _ease_in_out(t))
+
+
+def _rgb_hex(c: tuple[int, int, int]) -> str:
+    return f"#{c[0]:02x}{c[1]:02x}{c[2]:02x}"
+
+
+def _lock_frame_svg(t: float) -> str:
+    """Basic-shape lock: t=0 closed, t=1 open. Color fades green→amber→red."""
+    body = _rgb_hex(_lock_color_at(t))
+    key = _rgb_hex(_keyhole_color_at(t))
+    # Right shackle end: 10.5 seated (closed) → 7.9 open gap
+    te = _ease_in_out(t)
+    right_y = _lerp(10.5, 7.9, te)
+    if t < 0.02:
+        shackle = (
+            "M8.2 10.5V7.4c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8v3.1"
+        )
+    else:
+        shackle = (
+            f"M8.2 10.5V7.4c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8"
+            f"V{right_y:.2f}"
+        )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <rect x="5" y="10.5" width="14" height="10.5" rx="2.2" fill="{body}"/>
+  <path d="{shackle}" fill="none" stroke="{body}" stroke-width="2.1"
+        stroke-linecap="round"/>
+  <circle cx="12" cy="15.2" r="1.25" fill="{key}"/>
+  <rect x="11.35" y="15.5" width="1.3" height="2.8" rx="0.45" fill="{key}"/>
+</svg>
+"""
+
+
+def _lock_frame_pixmap(t: float, size: int = 32) -> list[tuple[int, int, bytes]]:
+    """Render one lock frame to IconPixmap data."""
+    try:
+        import gi
+
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf, Gio
+    except Exception:
+        return []
+
+    svg = _lock_frame_svg(t).encode("utf-8")
+    pb = None
+    try:
+        stream = Gio.MemoryInputStream.new_from_data(svg, None)
+        pb = GdkPixbuf.Pixbuf.new_from_stream_at_scale(
+            stream, size, size, True, None
+        )
+    except Exception:
+        pb = None
+    if pb is None:
+        # Fallback: temp file (some GdkPixbuf builds need a path for SVG)
+        try:
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(
+                suffix=".svg", delete=False
+            ) as tmp:
+                tmp.write(svg)
+                path = tmp.name
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_size(path, size, size)
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        except Exception:
+            return []
+    return _pixbuf_to_pixmap(pb)
+
+
+# Pre-rendered animation frames (built lazily once) so the timer never blocks
+# on SVG parse mid-transition.
+_FRAME_CACHE: list[list[tuple[int, int, bytes]]] | None = None
+_FRAME_CACHE_SIZE = 32
+_FADE_ICON_PREFIX = "spectre-tray-fade"
+_FADE_INSTALLED = False
+
+
+def _animation_frames(size: int = 32) -> list[list[tuple[int, int, bytes]]]:
+    """Return N+1 IconPixmap frames from t=0 (locked green) to t=1 (unlocked red)."""
+    global _FRAME_CACHE, _FRAME_CACHE_SIZE
+    if _FRAME_CACHE is not None and _FRAME_CACHE_SIZE == size:
+        return _FRAME_CACHE
+    frames: list[list[tuple[int, int, bytes]]] = []
+    n = _ANIM_FRAMES
+    for i in range(n + 1):
+        t = i / float(n)
+        frames.append(_lock_frame_pixmap(t, size=size))
+    _FRAME_CACHE = frames
+    _FRAME_CACHE_SIZE = size
+    return frames
+
+
+def _fade_icon_name(index: int) -> str:
+    return f"{_FADE_ICON_PREFIX}-{index:02d}"
+
+
+def ensure_fade_icons() -> None:
+    """Install green→amber→red lock frames as theme icon names.
+
+    Cinnamon/xapp paints theme IconName far more reliably than IconPixmap
+    alone. Cycling named fade frames is what makes the color transition visible.
+    """
+    global _FADE_INSTALLED
+    if _FADE_INSTALLED:
+        return
+    try:
+        import gi
+
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf, Gio
+    except Exception:
+        return
+
+    hicolor = _hicolor_root()
+    size = 32
+    size_dir = hicolor / f"{size}x{size}" / "status"
+    size_dir.mkdir(parents=True, exist_ok=True)
+    flat = user_data_dir() / "tray-icons"
+    flat.mkdir(parents=True, exist_ok=True)
+
+    n = _ANIM_FRAMES
+    wrote = False
+    for i in range(n + 1):
+        name = _fade_icon_name(i)
+        dest = size_dir / f"{name}.png"
+        flat_dest = flat / f"{name}.png"
+        # Rebuild if missing (cheap after first install)
+        if dest.is_file() and flat_dest.is_file():
+            continue
+        t = i / float(n)
+        svg = _lock_frame_svg(t).encode("utf-8")
+        pb = None
+        try:
+            stream = Gio.MemoryInputStream.new_from_data(svg, None)
+            pb = GdkPixbuf.Pixbuf.new_from_stream_at_scale(
+                stream, size, size, True, None
+            )
+        except Exception:
+            pb = None
+        if pb is None:
+            continue
+        try:
+            pb.savev(str(dest), "png", [], [])
+            pb.savev(str(flat_dest), "png", [], [])
+            wrote = True
+        except Exception:
+            pass
+
+    if wrote:
+        try:
+            subprocess.run(
+                ["gtk-update-icon-cache", "-f", "-t", str(hicolor)],
+                check=False,
+                capture_output=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+    _FADE_INSTALLED = True
+
+
+def _fade_index_for_t(t: float) -> int:
+    t = max(0.0, min(1.0, t))
+    n = _ANIM_FRAMES
+    return max(0, min(n, int(round(t * n))))
 
 
 def tooltip_for(state: CoreState, detail: str = "") -> tuple[str, str]:
@@ -234,9 +454,23 @@ class ReachTray:
         self._menu_obj = "/MenuBar"
 
         ensure_tray_icons()
+        # Warm fade frames (theme names + pixmap cache) for a smooth first transition.
+        try:
+            ensure_fade_icons()
+            _animation_frames(32)
+        except Exception:
+            pass
         self._apply_visual(CoreState.DISCONNECTED, "")
         self._path_up = False
         self._connecting = False
+        self._last_core_state: CoreState | None = CoreState.DISCONNECTED
+        # Visual lock pose for animation (True = green closed lock shown)
+        self._visual_locked = False
+        self._icon_anim_id: int | None = None
+        self._anim_frame = 0
+        self._anim_target: CoreState | None = None
+        self._anim_opening = True  # True = locked→unlocked (green→red)
+        self._anim_t = 1.0  # current pose along fade (0 locked … 1 unlocked)
         self._ok = False
         self._status = "Active"
         self._rev = 1
@@ -249,6 +483,38 @@ class ReachTray:
         if self._icon_file:
             self._pixmaps = _png_to_pixmap(self._icon_file, 32)
         self._tip_title, self._tip_body = tooltip_for(state, detail)
+        self._visual_locked = state == CoreState.CONNECTED
+        self._anim_t = 0.0 if self._visual_locked else 1.0
+
+    def _apply_visual_frame(self, t: float, detail: str = "") -> None:
+        """Animated frame: t=0 locked green, t=1 unlocked red.
+
+        Uses a unique theme IconName per frame (Cinnamon paints these reliably)
+        plus matching IconPixmap as a fallback for hosts that prefer pixmaps.
+        """
+        t = max(0.0, min(1.0, t))
+        self._anim_t = t
+        ensure_fade_icons()
+        idx = _fade_index_for_t(t)
+        self._icon_name = _fade_icon_name(idx)
+        # Prefer the installed PNG path as a secondary hint for hosts that
+        # resolve absolute files; keep theme name primary.
+        flat = user_data_dir() / "tray-icons" / f"{self._icon_name}.png"
+        self._icon_file = str(flat) if flat.is_file() else ""
+        self._icon_theme_path = str(Path.home() / ".local" / "share" / "icons")
+        frames = _animation_frames(32)
+        self._pixmaps = (
+            list(frames[idx]) if idx < len(frames) and frames[idx] else _lock_frame_pixmap(t, 32)
+        )
+        # Tooltip follows the blend (mid = connecting copy)
+        if t < 0.33:
+            tip_state = CoreState.CONNECTED
+        elif t > 0.66:
+            tip_state = CoreState.DISCONNECTED
+        else:
+            tip_state = CoreState.CONNECTING
+        self._tip_title, self._tip_body = tooltip_for(tip_state, detail)
+        self._visual_locked = t < 0.5
 
     @property
     def available(self) -> bool:
@@ -437,9 +703,71 @@ class ReachTray:
     def update_state(self, state: CoreState, detail: str = "") -> None:
         was_up = self._path_up
         was_conn = self._connecting
+        prev = getattr(self, "_last_core_state", None)
         self._path_up = state == CoreState.CONNECTED
         self._connecting = state == CoreState.CONNECTING
-        self._apply_visual(state, detail)
+        self._pending_detail = detail
+
+        # Real connect/disconnect always passes through CONNECTING. The old
+        # logic skipped animation whenever CONNECTING was involved, so the
+        # icon snapped. Drive the fade from lock pose changes instead.
+        self._drive_icon_for_state(prev, state, detail)
+
+        self._last_core_state = state
+        # Refresh right-click labels when connect state flips
+        if was_up != self._path_up or was_conn != self._connecting:
+            self._emit_layout_updated()
+
+    def _drive_icon_for_state(
+        self,
+        prev: CoreState | None,
+        state: CoreState,
+        detail: str,
+    ) -> None:
+        """Pick static icon or lock open/close fade for *state*."""
+        if prev is None:
+            self._cancel_icon_transition()
+            self._apply_visual(state, detail)
+            self._emit_icon_signals()
+            return
+
+        # Desired end pose: only CONNECTED is locked green.
+        # CONNECTING keeps the in-flight fade (or starts one toward the
+        # direction implied by the previous state).
+        if state == CoreState.CONNECTING:
+            # From connected → open (unlock); from anything else → close (lock)
+            opening = prev == CoreState.CONNECTED
+            provisional = (
+                CoreState.DISCONNECTED if opening else CoreState.CONNECTED
+            )
+            self._ensure_icon_transition(
+                provisional, detail, opening=opening
+            )
+            return
+
+        want_locked = state == CoreState.CONNECTED
+        # DISCONNECTED ↔ UNAVAILABLE: same unlocked pose, no re-anim
+        if (
+            not want_locked
+            and not self._visual_locked
+            and self._icon_anim_id is None
+            and prev != CoreState.CONNECTED
+            and prev != CoreState.CONNECTING
+        ):
+            self._apply_visual(state, detail)
+            self._emit_icon_signals()
+            return
+
+        opening = not want_locked  # locked→unlocked when leaving connected
+        if want_locked == self._visual_locked and self._icon_anim_id is None:
+            # Already showing the right static pose
+            self._apply_visual(state, detail)
+            self._emit_icon_signals()
+            return
+
+        self._ensure_icon_transition(state, detail, opening=opening)
+
+    def _emit_icon_signals(self) -> None:
         if not self._ok or self._bus is None:
             return
         for sig in ("NewIcon", "NewToolTip"):
@@ -447,9 +775,106 @@ class ReachTray:
                 self._bus.emit_signal(None, self._obj, _SNI, sig, None)
             except GLib.Error:
                 pass
-        # Refresh right-click labels when connect state flips
-        if was_up != self._path_up or was_conn != self._connecting:
-            self._emit_layout_updated()
+        # Some hosts (xapp) only re-read icons after NewStatus. Nudge without
+        # changing Active/Passive so the fade frames actually paint.
+        try:
+            self._bus.emit_signal(
+                None,
+                self._obj,
+                _SNI,
+                "NewStatus",
+                GLib.Variant("(s)", (self._status,)),
+            )
+        except GLib.Error:
+            pass
+
+    def _cancel_icon_transition(self) -> None:
+        tid = getattr(self, "_icon_anim_id", None)
+        if tid is not None:
+            try:
+                GLib.source_remove(tid)
+            except Exception:
+                pass
+            self._icon_anim_id = None
+        self._anim_frame = 0
+        self._anim_target = None
+
+    def _ensure_icon_transition(
+        self, state: CoreState, detail: str, *, opening: bool
+    ) -> None:
+        """Start or retarget a multi-frame color fade + shackle open/close."""
+        # Already running the right way — just retarget the end state.
+        if (
+            self._icon_anim_id is not None
+            and self._anim_opening == opening
+        ):
+            self._anim_target = state
+            self._anim_detail = detail
+            return
+        self._start_icon_transition(state, detail, opening=opening)
+
+    def _start_icon_transition(
+        self, state: CoreState, detail: str, *, opening: bool
+    ) -> None:
+        """Multi-frame color fade + shackle open/close (~0.8s).
+
+        *opening* True: locked green → unlocked red (disconnect).
+        *opening* False: unlocked red → locked green (connect).
+        Continues from the current pose when reversing mid-flight.
+        """
+        # Capture current pose before cancel clears bookkeeping
+        start_t = float(getattr(self, "_anim_t", 0.0 if opening else 1.0))
+        if self._icon_anim_id is None:
+            # From static: snap start to the end we're leaving
+            start_t = 0.0 if opening else 1.0
+            if self._visual_locked and opening:
+                start_t = 0.0
+            elif not self._visual_locked and not opening:
+                start_t = 1.0
+
+        self._cancel_icon_transition()
+        self._anim_target = state
+        self._anim_opening = opening
+        self._anim_detail = detail
+
+        end_t = 1.0 if opening else 0.0
+        # How far we still need to travel along t
+        span = end_t - start_t
+        if abs(span) < 1e-6:
+            self._apply_visual(state, detail)
+            self._emit_icon_signals()
+            return
+
+        n = _ANIM_FRAMES
+        # Frame count proportional to remaining distance so reverse is snappy
+        steps = max(4, int(round(n * abs(span))))
+        self._anim_frame = 0
+
+        # First frame immediately from current pose
+        self._apply_visual_frame(start_t, detail)
+        self._emit_icon_signals()
+
+        def tick() -> bool:
+            self._anim_frame += 1
+            if self._anim_frame >= steps:
+                self._icon_anim_id = None
+                target = self._anim_target if self._anim_target is not None else state
+                detail_now = getattr(self, "_anim_detail", detail)
+                # Only settle on a static named icon when core already matches
+                live = getattr(self, "_last_core_state", None)
+                if live is not None and live != CoreState.CONNECTING:
+                    self._apply_visual(live, detail_now)
+                else:
+                    self._apply_visual_frame(end_t, detail_now)
+                self._emit_icon_signals()
+                return False
+            p = self._anim_frame / float(steps)
+            t = start_t + span * p
+            self._apply_visual_frame(t, getattr(self, "_anim_detail", detail))
+            self._emit_icon_signals()
+            return True
+
+        self._icon_anim_id = GLib.timeout_add(_ANIM_FRAME_MS, tick)
 
     def _emit_layout_updated(self) -> None:
         self._rev += 1
@@ -540,13 +965,12 @@ class ReachTray:
         if name == "Status":
             return GLib.Variant("s", self._status)
         if name == "IconName":
-            if self._icon_name:
-                return GLib.Variant("s", self._icon_name)
-            return GLib.Variant("s", self._icon_file or "")
+            # Theme names (including per-frame fade-NN) paint on Cinnamon/xapp.
+            return GLib.Variant("s", self._icon_name or "")
         if name == "IconThemePath":
             return GLib.Variant("s", self._icon_theme_path)
         if name == "IconPixmap":
-            return GLib.Variant("a(iiay)", list(self._pixmaps))
+            return GLib.Variant("a(iiay)", list(self._pixmaps or []))
         if name in ("AttentionIconName", "OverlayIconName"):
             return GLib.Variant("s", "")
         if name == "ItemIsMenu":

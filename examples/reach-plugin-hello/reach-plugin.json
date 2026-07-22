@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "com.digitizable.hello",
+  "name": "Hello",
+  "version": "0.1.0",
+  "description": "Official example plugin — template for community authors.",
+  "author": "digitizable",
+  "homepage": "https://github.com/digitizable/reach",
+  "license": "GPL-3.0-or-later",
+  "category": "tool",
+  "official": true,
+  "entry": {
+    "kind": "python",
+    "module": "ui",
+    "create": "create_page"
+  },
+  "nav": {
+    "title": "Hello",
+    "icon": "emblem-favorite-symbolic",
+    "tooltip": "Example plugin page"
+  },
+  "permissions": ["path_status", "toast"],
+  "requires_reach": ">=0.5.0"
+}

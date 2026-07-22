@@ -6,6 +6,21 @@
 - **Sidebar / loading mark:** User-provided outline (`for-grok/hands-outline.jpg`) rendered white on transparent (`data/assets/mark.svg`)
 - **Use:** `data/icons/hicolor/scalable/apps/com.digitizable.reach.svg`, `data/assets/mark.svg`, `data/assets/app-icon.png` (README)
 
+## Paths / Recipes marks
+
+- **paths.svg:** In-house multi-hop chain (three nodes + links) for the Paths sidebar
+- **recipes.svg:** [Lucide `book-open`](https://lucide.dev/icons/book-open) — **ISC License** ([lucide-icons/lucide](https://github.com/lucide-icons/lucide)); open recipe-book glyph for the Recipes pane
+
+## Spectre mark (ghost glyph)
+
+- **Glyph:** [Game Icons “spectre”](https://game-icons.net/1x1/lorc/spectre.html) by Lorc — **CC BY 3.0**
+- **Use:** `data/assets/spectre.svg` on Settings → Spectre core (recolored to UI theme)
+
+## Tray locks (connected / disconnected / connecting)
+
+- **Design:** In-house basic shapes (body rect + stroke shackle + keyhole), matched proportions across states
+- **Use:** `spectre-tray-{locked,unlocked,connecting}.svg`
+
 ## Project X / Xray logo
 
 - **Work:** Project X logo (`logo-dark.svg` / `logo-light.svg`)
@@ -18,7 +33,13 @@ Project X, Xray, and REALITY names and marks belong to their respective owners.
 ## mapsicon country outlines
 
 - **Source:** [djaiss/mapsicon](https://github.com/djaiss/mapsicon)
-- **Use:** Territory silhouettes under `data/assets/map-*.svg`
+- **Use:** Territory silhouettes under `data/assets/map-*.svg` (alpha masks for flag fills)
+
+## National flag of Iran (SVG)
+
+- **Source:** [Wikimedia Commons — Flag of Iran.svg](https://commons.wikimedia.org/wiki/File:Flag_of_Iran.svg)
+- **License:** Public domain (national flag)
+- **Use:** `data/assets/flags/ir.svg` — painted through the Iran map silhouette on Territories
 
 ## Mullvad VPN
 

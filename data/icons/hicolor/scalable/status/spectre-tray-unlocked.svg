@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Spectre tray: disconnected — red open lock (not Mullvad-branded) -->
+<!--
+  Disconnected — open lock.
+  Same body + shackle weight as locked; right post is missing so the shackle
+  reads open (free end stops above the body, does not seat).
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-  <!-- Body -->
-  <rect x="4.5" y="10.5" width="15" height="11" rx="2.5" fill="#dc2626"/>
+  <!-- Body (identical footprint to locked) -->
+  <rect x="5" y="10.5" width="14" height="10.5" rx="2.2" fill="#dc2626"/>
   <!--
-    Open shackle as one continuous stroke: left leg fixed to the body,
-    full arch (same geometry as the locked icon), right leg stops short
-    of the body so a clear gap reads as unlocked — not a broken cut.
+    Open shackle — same radius/stroke as locked:
+      left post seats into body; arch matches closed lock;
+      right post stops short (open gap).
   -->
-  <path d="M8 10.5V7.2c0-2.2 1.8-4 4-4s4 1.8 4 4V8.2"
-        fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round"/>
-  <!-- Keyhole -->
-  <circle cx="12" cy="15.2" r="1.35" fill="#450a0a"/>
-  <rect x="11.25" y="15.5" width="1.5" height="3.2" rx="0.5" fill="#450a0a"/>
+  <path d="M8.2 10.5V7.4c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8V8.1"
+        fill="none" stroke="#dc2626" stroke-width="2.1" stroke-linecap="round"/>
+  <!-- Keyhole (identical to locked) -->
+  <circle cx="12" cy="15.2" r="1.25" fill="#450a0a"/>
+  <rect x="11.35" y="15.5" width="1.3" height="2.8" rx="0.45" fill="#450a0a"/>
 </svg>

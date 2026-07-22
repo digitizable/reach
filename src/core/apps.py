@@ -281,11 +281,16 @@ class AppStore:
         self._apps: list[RoutedApp] = []  # custom only
         # Per system desktop_id: mode / enabled overrides
         self._overrides: dict[str, dict[str, object]] = {}
+        # UI helpers: pin to top + last-opened ordering
+        self._pins: list[str] = []  # app ids, order preserved
+        self._usage: dict[str, float] = {}  # app id → last used unix ts
         self._system_cache: list[RoutedApp] | None = None
         self.load()
 
     def load(self) -> None:
         self._overrides = {}
+        self._pins = []
+        self._usage = {}
         if not self._path.is_file():
             self._apps = []
             self.save()
@@ -316,15 +321,30 @@ class AppStore:
                     for k, v in ov.items():
                         if isinstance(k, str) and isinstance(v, dict):
                             self._overrides[k] = dict(v)
+                pins = raw.get("pins") or []
+                if isinstance(pins, list):
+                    self._pins = [str(x) for x in pins if str(x).strip()]
+                usage = raw.get("usage") or {}
+                if isinstance(usage, dict):
+                    for k, v in usage.items():
+                        if isinstance(k, str):
+                            try:
+                                self._usage[k] = float(v)
+                            except (TypeError, ValueError):
+                                continue
         except (OSError, json.JSONDecodeError, TypeError):
             self._apps = []
             self._overrides = {}
+            self._pins = []
+            self._usage = {}
         self._system_cache = None
 
     def save(self) -> None:
         payload = {
             "apps": [asdict(a) for a in self._apps if a.is_custom],
             "overrides": self._overrides,
+            "pins": list(self._pins),
+            "usage": {k: v for k, v in self._usage.items()},
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -361,17 +381,43 @@ class AppStore:
             )
         return out
 
+    def is_pinned(self, app_id: str) -> bool:
+        return app_id in self._pins
+
+    def toggle_pin(self, app_id: str) -> bool:
+        """Pin or unpin. Returns new pinned state."""
+        if app_id in self._pins:
+            self._pins = [p for p in self._pins if p != app_id]
+            self.save()
+            return False
+        self._pins.append(app_id)
+        self.save()
+        return True
+
+    def touch(self, app_id: str) -> None:
+        """Record that the app was opened (for recents sorting)."""
+        import time
+
+        self._usage[app_id] = time.time()
+        # Cap usage map growth
+        if len(self._usage) > 200:
+            keep = sorted(self._usage.items(), key=lambda kv: kv[1], reverse=True)[:150]
+            self._usage = dict(keep)
+        self.save()
+
     def list(
         self,
         *,
         enabled_only: bool = False,
         include_system: bool = True,
         query: str = "",
+        pinned_only: bool = False,
+        custom_only: bool = False,
     ) -> list[RoutedApp]:
         custom = list(self._apps)
         items: list[RoutedApp] = []
 
-        if include_system:
+        if include_system and not custom_only:
             # Prefer custom entry when it shadows the same desktop file / id.
             custom_desk = {
                 Path(a.desktop_file).name
@@ -395,6 +441,8 @@ class AppStore:
 
         if enabled_only:
             items = [a for a in items if a.enabled]
+        if pinned_only:
+            items = [a for a in items if a.id in self._pins]
 
         q = query.strip().casefold()
         if q:
@@ -406,7 +454,19 @@ class AppStore:
                 or q in (a.desktop_id or "").casefold()
             ]
 
-        return sorted(items, key=lambda a: (0 if a.is_custom else 1, a.name.casefold()))
+        pin_rank = {pid: i for i, pid in enumerate(self._pins)}
+
+        def sort_key(a: RoutedApp) -> tuple:
+            pinned = a.id in pin_rank
+            return (
+                0 if pinned else 1,
+                pin_rank.get(a.id, 9999),
+                -(self._usage.get(a.id, 0.0)),
+                0 if a.is_custom else 1,
+                a.name.casefold(),
+            )
+
+        return sorted(items, key=sort_key)
 
     def get(self, app_id: str) -> RoutedApp | None:
         for a in self._apps:

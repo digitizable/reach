@@ -211,7 +211,7 @@ class ReachApplication(Adw.Application):
         if tray.start():
             self._tray = tray
             if self._tray_timer is None:
-                self._tray_timer = GLib.timeout_add_seconds(2, self._tray_tick)
+                self._tray_timer = GLib.timeout_add_seconds(3, self._tray_tick)
             self.services.log("Tray applet started")
             self._refresh_tray()
         else:
@@ -237,15 +237,19 @@ class ReachApplication(Adw.Application):
             self.stop_tray()
 
     def _tray_tick(self) -> bool:
-        self._refresh_tray()
+        # Prefer cache most ticks; force every ~12s so tray stays honest without
+        # blocking the main loop on a core socket read every few seconds for hours.
+        self._tray_tick_n = int(getattr(self, "_tray_tick_n", 0)) + 1
+        force = self._tray_tick_n % 4 == 1
+        self._refresh_tray(force=force)
         return True
 
-    def _refresh_tray(self, *, force: bool = True) -> None:
+    def _refresh_tray(self, *, force: bool = False) -> None:
         if self._tray is None or not self._tray.available:
             return
         try:
-            # force=True when tray timer fires alone; False when window poll
-            # already refreshed (avoids double /v1/status and flicker).
+            # force=False by default (uses ~1.8s status cache). Window poll and
+            # tray tick pass force sparingly.
             st = self.services.core.status(force=force)
             if st.state == CoreState.CONNECTED:
                 detail = st.path_summary or "Protected"
@@ -313,6 +317,71 @@ class ReachApplication(Adw.Application):
     def _tray_disconnect(self) -> None:
         if getattr(self, "_tray_net_busy", False):
             return
+        GLib.idle_add(self._confirm_tray_disconnect, False)
+
+    def _tray_disconnect_quit(self) -> None:
+        """Disconnect the path, then quit the desktop (tray + window)."""
+        if getattr(self, "_tray_net_busy", False):
+            return
+        GLib.idle_add(self._confirm_tray_disconnect, True)
+
+    def _confirm_tray_disconnect(self, also_quit: bool) -> bool:
+        """Always confirm tray disconnect (and disconnect+quit)."""
+        from gi.repository import Adw
+
+        from core.readiness import profile_uses_mullvad_app_socks
+
+        parent = self._window
+        profile = self.services.active_profile()
+        uses_mv = profile_uses_mullvad_app_socks(profile, self.services.backends)
+        auto_mv = bool(getattr(self.services.config, "mullvad_auto_connect", True))
+        if also_quit:
+            heading = "Disconnect and quit?"
+            body = "This stops the Spectre path, then quits Reach."
+        else:
+            heading = "Disconnect path?"
+            body = (
+                "This stops the Spectre path and restores clearnet for system routing."
+            )
+        if uses_mv and auto_mv:
+            body += "\n\nMullvad will also be disconnected (auto-manage is on)."
+        elif uses_mv:
+            body += "\n\nMullvad will be left connected (auto-manage is off)."
+
+        dialog = Adw.MessageDialog(
+            transient_for=parent,
+            heading=heading,
+            body=body,
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("disconnect", "Disconnect and quit" if also_quit else "Disconnect")
+        dialog.set_response_appearance(
+            "disconnect", Adw.ResponseAppearance.DESTRUCTIVE
+        )
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response != "disconnect":
+                return
+            if also_quit:
+                self._run_tray_disconnect(quit_after=True)
+            else:
+                self._run_tray_disconnect(quit_after=False)
+
+        dialog.connect("response", on_response)
+        # Ensure a window exists so the dialog can present (tray-only).
+        if parent is not None:
+            try:
+                parent.present()
+            except Exception:
+                pass
+        dialog.present()
+        return False
+
+    def _run_tray_disconnect(self, *, quit_after: bool) -> None:
+        if getattr(self, "_tray_net_busy", False):
+            return
         self._tray_net_busy = True
 
         def worker() -> None:
@@ -325,6 +394,9 @@ class ReachApplication(Adw.Application):
 
             def done() -> bool:
                 self._tray_net_busy = False
+                if quit_after:
+                    self._tray_quit()
+                    return False
                 if self._window is not None:
                     self._window.toast(err or toast or "Disconnected")
                     self._window.refresh_all()
@@ -336,28 +408,9 @@ class ReachApplication(Adw.Application):
         import threading
 
         threading.Thread(
-            target=worker, name="spectre-tray-disconnect", daemon=True
-        ).start()
-
-    def _tray_disconnect_quit(self) -> None:
-        """Disconnect the path, then quit the desktop (tray + window)."""
-
-        def worker() -> None:
-            try:
-                self.services.disconnect()
-            except Exception:
-                pass
-
-            def done() -> bool:
-                self._tray_quit()
-                return False
-
-            GLib.idle_add(done)
-
-        import threading
-
-        threading.Thread(
-            target=worker, name="spectre-tray-disconnect-quit", daemon=True
+            target=worker,
+            name="spectre-tray-disconnect-quit" if quit_after else "spectre-tray-disconnect",
+            daemon=True,
         ).start()
 
     def should_close_to_tray(self) -> bool:

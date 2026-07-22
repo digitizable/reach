@@ -20,6 +20,7 @@ class BackendsPage(Gtk.Box):
         parent_window: Gtk.Window | None = None,
         on_changed: Callable[[], None] | None = None,
         on_toast: Callable[[str], None] | None = None,
+        embedded: bool = False,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("page")
@@ -30,21 +31,23 @@ class BackendsPage(Gtk.Box):
         self._parent_window = parent_window
         self._on_changed = on_changed
         self._on_toast = on_toast
+        self._embedded = embedded
         self._selected_id: str | None = None
         self._row_buttons: dict[str, Gtk.CheckButton] = {}
 
-        new_btn = Gtk.Button()
-        new_btn.set_icon_name("list-add-symbolic")
-        new_btn.add_css_class("flat")
-        new_btn.set_tooltip_text("New adapter")
-        new_btn.connect("clicked", self._on_new)
-        self.append(
-            page_header(
-                "Adapters",
-                subtitle="VPN, Tor, REALITY, proxy — what hops can use.",
-                end=new_btn,
+        if not embedded:
+            new_btn = Gtk.Button()
+            new_btn.set_icon_name("list-add-symbolic")
+            new_btn.add_css_class("flat")
+            new_btn.set_tooltip_text("New adapter")
+            new_btn.connect("clicked", self._on_new)
+            self.append(
+                page_header(
+                    "Adapters",
+                    subtitle="VPN, Tor, REALITY, proxy — what hops can use.",
+                    end=new_btn,
+                )
             )
-        )
 
         split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         split.add_css_class("master-detail")
@@ -66,10 +69,12 @@ class BackendsPage(Gtk.Box):
         self._empty.set_margin_top(16)
         master.append(self._empty)
 
-        list_scroll = Gtk.ScrolledWindow()
-        list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        list_scroll.set_vexpand(True)
-        list_scroll.set_hexpand(True)
+        from widgets.scroll import scrolled_window
+
+        list_scroll = scrolled_window(
+            h_policy=Gtk.PolicyType.NEVER,
+            v_policy=Gtk.PolicyType.AUTOMATIC,
+        )
         self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self._list.add_css_class("profile-list")
         list_scroll.set_child(self._list)
@@ -85,6 +90,15 @@ class BackendsPage(Gtk.Box):
         detail.set_hexpand(True)
         detail.set_vexpand(True)
 
+        from widgets.transitions import PANEL_MS, crossfade_stack
+
+        self._detail_stack = crossfade_stack(
+            duration_ms=PANEL_MS,
+            hhomogeneous=True,
+            vhomogeneous=True,
+            css_class="detail-stack",
+        )
+
         self._detail_empty = Gtk.Label(
             label="Select an adapter, or create one.",
             justify=Gtk.Justification.CENTER,
@@ -92,7 +106,7 @@ class BackendsPage(Gtk.Box):
         self._detail_empty.add_css_class("muted")
         self._detail_empty.set_valign(Gtk.Align.CENTER)
         self._detail_empty.set_vexpand(True)
-        detail.append(self._detail_empty)
+        self._detail_stack.add_named(self._detail_empty, "empty")
 
         self._detail_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self._detail_body.add_css_class("detail-inner")
@@ -100,7 +114,6 @@ class BackendsPage(Gtk.Box):
         self._detail_body.set_vexpand(True)
         self._detail_body.set_halign(Gtk.Align.CENTER)
         self._detail_body.set_valign(Gtk.Align.CENTER)
-        self._detail_body.set_visible(False)
         self._detail_body.set_size_request(360, -1)
 
         self._detail_name = Gtk.Label(label="", xalign=0.5)
@@ -147,7 +160,9 @@ class BackendsPage(Gtk.Box):
         actions.append(self._del_btn)
         self._detail_body.append(actions)
 
-        detail.append(scroll_body(self._detail_body, margin=16))
+        self._detail_stack.add_named(scroll_body(self._detail_body, margin=16), "body")
+        self._detail_stack.set_visible_child_name("empty")
+        detail.append(self._detail_stack)
         split.append(detail)
         self.append(split)
         self.reload()
@@ -207,13 +222,12 @@ class BackendsPage(Gtk.Box):
     def _show_detail(self, backend_id: str | None) -> None:
         backend = self._services.backends.get(backend_id) if backend_id else None
         has = backend is not None
-        self._detail_empty.set_visible(not has)
-        self._detail_body.set_visible(has)
-        parent = self._detail_body.get_parent()
-        while parent is not None and not isinstance(parent, Gtk.ScrolledWindow):
-            parent = parent.get_parent()
-        if parent is not None:
-            parent.set_visible(has)
+        stack = getattr(self, "_detail_stack", None)
+        if stack is not None:
+            stack.set_visible_child_name("body" if has else "empty")
+        else:
+            self._detail_empty.set_visible(not has)
+            self._detail_body.set_visible(has)
 
         self._edit_btn.set_sensitive(has)
         self._del_btn.set_sensitive(has)
@@ -256,6 +270,10 @@ class BackendsPage(Gtk.Box):
     def _toast(self, msg: str) -> None:
         if self._on_toast:
             self._on_toast(msg)
+
+    def open_new(self) -> None:
+        """Public entry for parent hubs (Paths → New adapter)."""
+        self._on_new()
 
     def _on_new(self, *_a) -> None:
         dialog = BackendEditorDialog(

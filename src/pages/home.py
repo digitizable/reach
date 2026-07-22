@@ -252,6 +252,8 @@ class HomePage(Gtk.Box):
         self._mv_city_codes: list[str] = []
         self._mv_hosts: list[str] = []
         self._mv_ready = False
+        # Skip rebuilding path_graph / chrome when nothing user-visible changed
+        self._home_paint_fp: tuple | None = None
         GLib.idle_add(self._init_mullvad_picker)
 
         self.append(split)
@@ -277,47 +279,66 @@ class HomePage(Gtk.Box):
         return self._mv_suppress > 0 or not self._mv_ready
 
     def _init_mullvad_picker(self) -> bool:
-        """Sync dropdowns to current Mullvad state — never set_location/disconnect."""
+        """Sync dropdowns to current Mullvad state — never set_location/disconnect.
+
+        Catalog + probe load off the UI thread so Home never freezes on
+        `mullvad relay list` / status at first paint.
+        """
         from core import mullvad as mv
 
         if not mv.cli_path():
             self._mv_box.set_visible(False)
             return False
-        try:
-            cat = mv.load_catalog()
-        except Exception:
-            self._mv_box.set_visible(False)
-            return False
-        if not cat.countries:
-            self._mv_box.set_visible(False)
-            return False
 
-        self._mv_begin_suppress()
-        try:
-            labels = ["Any country"]
-            codes = ["any"]
-            for code, name in cat.countries:
-                labels.append(f"{name} ({code})")
-                codes.append(code)
-            self._mv_country_codes = codes
-            self._mv_country.set_model(Gtk.StringList.new(labels))
+        self._mv_status.set_text("Loading servers…")
+        self._mv_box.set_visible(True)
 
-            country, city, host = mv.get_location_constraint()
-            idx = 0
-            if country and country in codes:
-                idx = codes.index(country)
-            self._mv_country.set_selected(idx)
-            self._reload_mv_cities(select_city=city, select_host=host)
-            st = mv.probe()
-            self._mv_status.set_text(st.summary or "")
-            self._mv_box.set_visible(True)
-            if self._mv_map is not None:
-                self._mv_map.set_active(country or "", city or "")
-            # Defer ready until after GTK drains selection notify handlers
-            # so startup sync never calls set_location / disconnect.
-        finally:
-            self._mv_end_suppress()
-        GLib.idle_add(self._mv_mark_ready)
+        def worker() -> None:
+            cat = None
+            st = None
+            err = ""
+            try:
+                cat = mv.load_catalog()
+            except Exception as exc:
+                err = str(exc)
+            try:
+                st = mv.probe()
+            except Exception:
+                st = None
+
+            def apply() -> bool:
+                if cat is None or not cat.countries:
+                    self._mv_box.set_visible(False)
+                    if err:
+                        self._mv_status.set_text(err[:120])
+                    return False
+                self._mv_begin_suppress()
+                try:
+                    labels = ["Any country"]
+                    codes = ["any"]
+                    for code, name in cat.countries:
+                        labels.append(f"{name} ({code})")
+                        codes.append(code)
+                    self._mv_country_codes = codes
+                    self._mv_country.set_model(Gtk.StringList.new(labels))
+                    # Default UI: free-nav “Any country”
+                    self._mv_country.set_selected(0)
+                    self._reload_mv_cities(select_city="", select_host="")
+                    if st is not None:
+                        self._mv_status.set_text(st.summary or "")
+                    else:
+                        self._mv_status.set_text("")
+                    self._mv_box.set_visible(True)
+                    if self._mv_map is not None:
+                        self._mv_map.set_active("", "")
+                finally:
+                    self._mv_end_suppress()
+                GLib.idle_add(self._mv_mark_ready)
+                return False
+
+            GLib.idle_add(apply)
+
+        threading.Thread(target=worker, name="mullvad-picker-init", daemon=True).start()
         return False
 
     def _mv_mark_ready(self) -> bool:
@@ -422,9 +443,8 @@ class HomePage(Gtk.Box):
             return
         self._apply_mv_location()
 
-    def _apply_mv_location(self) -> None:
-        from core import mullvad as mv
-
+    def _mv_codes(self) -> tuple[str, str, str]:
+        """Current picker codes: (country, city, host), each may be ``any``."""
         cidx = int(self._mv_country.get_selected())
         city_i = int(self._mv_city.get_selected())
         hidx = int(self._mv_host.get_selected())
@@ -439,29 +459,113 @@ class HomePage(Gtk.Box):
             else "any"
         )
         host = self._mv_hosts[hidx] if 0 <= hidx < len(self._mv_hosts) else "any"
+        return country, city, host
+
+    def _mv_is_any_city(self) -> bool:
+        """True when a country is set but the city picker is still “Any city”."""
+        country, city, _host = self._mv_codes()
+        return bool(country) and country != "any" and city in ("", "any")
+
+    def _mv_is_any_country(self) -> bool:
+        """True when the country picker is still “Any country”."""
+        country, _city, _host = self._mv_codes()
+        return not country or country == "any"
+
+    def _live_relay_codes(self, st: CoreStatus) -> tuple[str, str]:
+        """(country, city) of the live Mullvad relay, or empty when unknown."""
+        if st.state != CoreState.CONNECTED:
+            return "", ""
+        relay = ""
+        mv = getattr(st, "mullvad", None)
+        if isinstance(mv, dict):
+            relay = str(mv.get("relay") or "")
+        if not relay:
+            return "", ""
+        from core.mullvad import parse_relay_hostname
+
+        return parse_relay_hostname(relay)
+
+    def _sync_map_connection(self, st: CoreStatus) -> None:
+        """Zoom (any-country / any-city) + green connected marker from live state."""
+        if self._mv_map is None or not self._mv_ready:
+            return
+
+        rc, rcity = self._live_relay_codes(st)
+
+        # Green node only while the path is up and we know the city.
+        if st.state == CoreState.CONNECTED and rc and rcity:
+            self._mv_map.set_connected(rc, rcity)
+        else:
+            self._mv_map.set_connected("", "")
+
+        # Any-country mode: free-nav selection is cleared. Optionally *frame*
+        # the live country for camera only — never cyan-pulse all its cities.
+        if self._mv_is_any_country():
+            if st.state == CoreState.CONNECTED and rc:
+                self._mv_map.set_active(rc, "", highlight=False)
+            else:
+                self._mv_map.set_active("", "", highlight=True)
+            return
+
+        # Any-city mode: zoom into the live city when up; whole country when down.
+        if not self._mv_is_any_city():
+            return
+        country, _city, _host = self._mv_codes()
+        if st.state == CoreState.CONNECTED and rc == country and rcity:
+            # Green marker is enough; don't pulse every city in the country
+            self._mv_map.set_active(country, rcity, highlight=False)
+        else:
+            self._mv_map.set_active(country, "", highlight=True)
+
+    def _apply_mv_location(self) -> None:
+        from core import mullvad as mv
+
+        country, city, host = self._mv_codes()
+
+        # 1) Fly the map immediately — don't wait on Mullvad CLI.
+        # 2) Spinner only if CLI is still running after a short grace period
+        #    (fast location changes never flash a loading overlay).
+        # 3) Skip a full home refresh after apply; status text is enough.
+        if country and country != "any":
+            label = f"Selecting · {country.upper()}…"
+            if city and city not in ("", "any"):
+                label = f"Selecting · {city.upper()}, {country.upper()}…"
+        else:
+            label = "Updating location…"
+
+        if self._mv_map is not None:
+            # Always update selection: Any country must clear cyan highlights
+            # (previously we skipped set_active and left US nodes flashing).
+            fly_country = "" if country in ("", "any") else country
+            fly_city = "" if city in ("", "any") else city
+            self._mv_map.set_active(fly_country, fly_city, highlight=True)
+            self._mv_map.set_loading(True, label, delay_ms=280)
+        self._mv_status.set_text(label)
+
+        # Coalesce rapid dropdown changes into one CLI call.
+        gen = getattr(self, "_mv_apply_gen", 0) + 1
+        self._mv_apply_gen = gen
 
         def worker() -> None:
-            # Constraints only — never auto-connect (see set_location).
+            # Constraints only — never auto-connect; never force-disconnect
+            # (Any country / Any city while connected must keep the VPN up).
             ok, msg = mv.set_location(
                 country,
                 None if city in ("", "any") else city,
                 None if host in ("", "any") else host,
-                disconnect_if_connected=True,
+                disconnect_if_connected=False,
             )
-            st = mv.probe()
 
             def done() -> bool:
+                # A newer picker change superseded this request.
+                if gen != getattr(self, "_mv_apply_gen", 0):
+                    return False
+                if self._mv_map is not None:
+                    self._mv_map.set_loading(False)
                 if ok:
-                    # Prefer explicit “selected” copy over Connected status.
-                    status = msg if "selected" in msg.lower() or not st.connected else st.summary
-                    self._mv_status.set_text(status or msg)
-                    if self._mv_map is not None:
-                        self._mv_map.set_active(
-                            country if country != "any" else "",
-                            city if city not in ("", "any") else "",
-                        )
+                    self._mv_status.set_text(msg)
                     if self._on_toast:
-                        self._on_toast(msg if len(msg) < 100 else "Relay selected")
+                        self._on_toast(msg if len(msg) < 120 else "Relay updated")
                 else:
                     self._mv_status.set_text(msg)
                     if self._on_toast:
@@ -536,20 +640,20 @@ class HomePage(Gtk.Box):
             return
         if profile is None:
             self._next.set_label("Create a path →")
-            self._next_target = "profiles"
+            self._next_target = "paths:recipes"
             self._next.set_visible(True)
             return
         if not ready.ok:
             low = ready.summary.lower()
             if "incomplete" in low or "backend" in low or "adapter" in low:
                 label = "Fix adapters →"
-                target = "backends"
+                target = "paths:adapters"
             elif "no backend" in low or "unbound" in low or "hop" in low:
                 label = "Bind hops on path →"
-                target = "profiles"
+                target = "paths:recipes"
             else:
                 label = f"{ready.summary[:42]}{'…' if len(ready.summary) > 42 else ''} →"
-                target = "profiles"
+                target = "paths:recipes"
             self._next.set_label(label)
             self._next_target = target
             self._next.set_visible(True)
@@ -610,11 +714,11 @@ class HomePage(Gtk.Box):
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.set_margin_top(8)
-        scrolled = Gtk.ScrolledWindow()
+        from widgets.scroll import scrolled_window
+
+        scrolled = scrolled_window()
         scrolled.set_min_content_height(160)
         scrolled.set_min_content_width(320)
-        scrolled.set_hexpand(True)
-        scrolled.set_vexpand(True)
         buf = Gtk.TextBuffer()
         # Show effective text for editing (including defaults resolved in).
         buf.set_text(resolve_profile_info(profile))
@@ -655,7 +759,59 @@ class HomePage(Gtk.Box):
             return
         st = self._services.core.status()
         disconnecting = st.state in (CoreState.CONNECTED, CoreState.CONNECTING)
+        if disconnecting:
+            self._confirm_disconnect(on_confirm=self._run_primary_disconnect)
+            return
+        self._run_primary_connect()
 
+    def _confirm_disconnect(self, *, on_confirm: Callable[[], None]) -> None:
+        """Always confirm before tearing down the path (and optional Mullvad)."""
+        from core.readiness import profile_uses_mullvad_app_socks
+
+        profile = self._services.active_profile()
+        uses_mv = profile_uses_mullvad_app_socks(profile, self._services.backends)
+        auto_mv = bool(getattr(self._services.config, "mullvad_auto_connect", True))
+        body = (
+            "This stops the Spectre path and restores clearnet for system routing."
+        )
+        if uses_mv and auto_mv:
+            body += (
+                "\n\nMullvad will also be disconnected (auto-manage is on)."
+            )
+        elif uses_mv:
+            body += (
+                "\n\nMullvad will be left connected (auto-manage is off)."
+            )
+        parent = self._root_window()
+        dialog = Adw.MessageDialog(
+            transient_for=parent,
+            heading="Disconnect path?",
+            body=body,
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("disconnect", "Disconnect")
+        dialog.set_response_appearance(
+            "disconnect", Adw.ResponseAppearance.DESTRUCTIVE
+        )
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response == "disconnect":
+                on_confirm()
+
+        dialog.connect("response", on_response)
+        dialog.present()
+
+    def _run_primary_disconnect(self) -> None:
+        self._run_primary_action(disconnecting=True)
+
+    def _run_primary_connect(self) -> None:
+        self._run_primary_action(disconnecting=False)
+
+    def _run_primary_action(self, *, disconnecting: bool) -> None:
+        if self._action_busy:
+            return
         self._action_busy = True
         self._primary.set_sensitive(False)
         self._primary.set_label("Disconnecting…" if disconnecting else "Connecting…")
@@ -725,14 +881,14 @@ class HomePage(Gtk.Box):
             # Guide user to fix bindings / backends / external deps
             low = ready.summary.lower()
             if "no profile" in low:
-                self._nav("profiles")
+                self._nav("paths:recipes")
             elif "incomplete" in low or "backend" in low or "hop" in low:
                 if "no backend" in low or "unbound" in low:
-                    self._nav("profiles")
+                    self._nav("paths:recipes")
                 else:
-                    self._nav("backends")
+                    self._nav("paths:adapters")
             elif "profile" in low:
-                self._nav("profiles")
+                self._nav("paths:recipes")
             return
 
         if status is None:
@@ -816,6 +972,13 @@ class HomePage(Gtk.Box):
                     detail += " · Mullvad full-tunnel"
             if whonix and whonix_role == "workstation":
                 detail += " · Whonix"
+            hop_n = getattr(st, "hop_count", None) or len(st.hops or [])
+            if hop_n >= 2:
+                detail += " · multi-hop (Tools → Path fingerprint)"
+            note = (getattr(st, "fingerprint_note", None) or "").strip()
+            # Keep hero detail short; full note is in Core status / Path fingerprint
+            if note and hop_n < 2:
+                detail += " · measure FP optional"
         elif st.state == CoreState.DISCONNECTED and st.message and st.message not in (
             "Ready",
             "Disconnected",
@@ -864,21 +1027,53 @@ class HomePage(Gtk.Box):
                 summary = str(mv.get("summary") or "")
                 if summary and summary not in detail:
                     detail = f"{detail} · {summary}" if detail else summary
+            # Live map focus + green connected city marker.
+            self._sync_map_connection(st)
+        elif self._mv_map is not None:
+            # Non-Mullvad path: never leave a stale green node.
+            self._mv_map.set_connected("", "")
+        title_txt = titles.get(st.state, st.state.value)
+        graph_kinds = tuple(explain.kinds if explain.hops else [])
+        graph_labels = tuple(explain.labels or ())
+        graph_roles = tuple(explain.roles or ())
+        graph_subs = tuple(explain.sublabels or ())
+        paint_fp = (
+            kind.value,
+            title_txt,
+            detail,
+            active,
+            st.state.value if st.state is not None else "",
+            (st.profile_id or "").strip(),
+            graph_kinds,
+            graph_labels,
+            graph_roles,
+            graph_subs,
+            explain.caption or "",
+            bool(self._action_busy),
+            bool(self._services.profiles.list()),
+        )
+        if paint_fp == self._home_paint_fp and not live:
+            # Still allow connect preflight path when live=True
+            return
+        self._home_paint_fp = paint_fp
+
         for k in ("offline", "idle", "busy", "live", "unknown", "bad"):
             self._dot.remove_css_class(f"state-{k}")
         self._dot.add_css_class(f"state-{kind.value}")
-        self._title.set_text(titles.get(st.state, st.state.value))
-        self._detail.set_text(detail)
+        if self._title.get_text() != title_txt:
+            self._title.set_text(title_txt)
+        if self._detail.get_text() != detail:
+            self._detail.set_text(detail)
 
         clear_box(self._path_host)
         self._path_host.append(
             path_graph(
-                explain.kinds if explain.hops else [],
+                list(graph_kinds),
                 live=active,
                 empty="Pick or create a path",
-                labels=explain.labels or None,
-                roles=explain.roles or None,
-                sublabels=explain.sublabels or None,
+                labels=list(graph_labels) or None,
+                roles=list(graph_roles) or None,
+                sublabels=list(graph_subs) or None,
                 caption=explain.caption,
             )
         )
@@ -895,11 +1090,13 @@ class HomePage(Gtk.Box):
         )
 
         self._info_btn.set_sensitive(True)
-        self._info_btn.set_tooltip_text(
+        tip = (
             f"What does “{profile.name}” do?"
             if profile is not None
             else "What does this path do?"
         )
+        if self._info_btn.get_tooltip_text() != tip:
+            self._info_btn.set_tooltip_text(tip)
 
         self._update_next_chip(
             active=active, ready=ready, profile=profile, st=st
@@ -910,11 +1107,13 @@ class HomePage(Gtk.Box):
             return
 
         if active or st.state == CoreState.CONNECTING:
-            self._primary.set_label("Disconnect")
+            if self._primary.get_label() != "Disconnect":
+                self._primary.set_label("Disconnect")
             self._primary.set_sensitive(True)
             self._primary.remove_css_class("suggested-action")
         else:
-            self._primary.set_label("Connect")
+            if self._primary.get_label() != "Connect":
+                self._primary.set_label("Connect")
             # Allow Connect even when incomplete so preflight can guide.
             self._primary.set_sensitive(True)
             self._primary.add_css_class("suggested-action")

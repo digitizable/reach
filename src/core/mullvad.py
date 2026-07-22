@@ -143,6 +143,29 @@ def probe() -> MullvadStatus:
     return st
 
 
+def parse_relay_hostname(relay: str) -> tuple[str, str]:
+    """Extract (country_code, city_code) from a hostname like ``us-atl-wg-402``.
+
+    Returns ``("", "")`` when the relay string cannot be parsed.
+    """
+    r = (relay or "").strip().lower()
+    if not r:
+        return "", ""
+    # Status lines sometimes append extra text after the hostname.
+    r = r.split()[0].replace("_", "-")
+    bits = [b for b in r.split("-") if b]
+    if len(bits) < 2:
+        return "", ""
+    country = bits[0]
+    if len(country) != 2 or not country.isalpha():
+        return "", ""
+    city = bits[1]
+    # Skip protocol/role tokens that can appear right after country.
+    if city in ("wg", "ovpn", "openvpn", "wireguard") or city.isdigit():
+        return country, ""
+    return country, city
+
+
 def get_location_constraint() -> tuple[str, str, str]:
     """Return (country, city, hostname) codes from `mullvad relay get`."""
     code, out = _run("relay", "get", timeout=4.0)
@@ -180,26 +203,19 @@ def set_location(
     city: str | None = None,
     hostname: str | None = None,
     *,
-    disconnect_if_connected: bool = True,
+    disconnect_if_connected: bool = False,
 ) -> tuple[bool, str]:
-    """Set Mullvad relay constraints only — does not connect.
+    """Set Mullvad relay constraints only — does not connect by itself.
 
-    Changing location while Mullvad is already connected makes the daemon
-    reconnect to the new relay. By default we disconnect afterward so
-    selection never auto-connects; the user must press Connect.
+    Changing location while Mullvad is already connected may make the daemon
+    migrate/reconnect to a matching relay. We **never** force-disconnect
+    unless *disconnect_if_connected* is True (opt-in; default keeps the tunnel).
     """
     if not cli_path():
         return False, "Mullvad CLI not installed"
     country = (country or "any").strip().lower()
     city = (city or "").strip().lower() or None
     hostname = (hostname or "").strip().lower() or None
-
-    # Snapshot tunnel state before the change (location change can reconnect).
-    was_connected = False
-    try:
-        was_connected = probe().connected
-    except Exception:
-        pass
 
     args: list[str] = ["relay", "set", "location"]
     if hostname and hostname not in ("any", ""):
@@ -210,21 +226,24 @@ def set_location(
         args.extend([country, city])
     else:
         args.append(country)
+
+    # One CLI call for the common path. Optional disconnect path probes once.
     code, out = _run(*args, timeout=12.0)
     if code != 0:
         return False, out or "mullvad relay set location failed"
 
     where = " ".join(args[3:])
-    # Always leave the tunnel down after a pure location pick unless asked not to.
+    # Optional legacy behavior: drop the tunnel after picking a relay.
     if disconnect_if_connected:
         try:
             st = probe()
-            if was_connected or st.connected:
+            if st.connected:
                 disconnect()
         except Exception:
             pass
         return True, f"Relay selected · {where} · press Connect when ready"
 
+    # Prefer CLI stdout; avoid a second status probe on every picker change.
     return True, out or f"Relay location → {where}"
 
 
@@ -333,30 +352,84 @@ def _parse_relay_list(text: str) -> RelayCatalog:
     return cat
 
 
-@lru_cache(maxsize=1)
-def load_catalog() -> RelayCatalog:
-    """Countries / cities / hosts from CLI (cached for process lifetime)."""
-    if not cli_path():
-        return RelayCatalog()
-    code, out = _run("relay", "list", timeout=45.0)
-    if code != 0 or not out:
-        return RelayCatalog()
-    cat = _parse_relay_list(out)
-    # Map cities from public API (lat/lon) — GPL client; public relay data
+_MAP_CITIES_MEM: list[RelayCity] | None = None
+_MAP_CITIES_CACHE_TTL = 86_400.0  # 24h disk cache
+
+
+def _map_cities_cache_path():
+    from app_config import user_data_dir
+
+    return user_data_dir() / "cache" / "mullvad_map_cities.json"
+
+
+def load_map_cities_disk() -> list[RelayCity]:
+    """Instant map markers from disk (no network). Empty if missing/stale."""
+    global _MAP_CITIES_MEM
+    if _MAP_CITIES_MEM is not None:
+        return list(_MAP_CITIES_MEM)
+    path = _map_cities_cache_path()
     try:
-        cat.map_cities = fetch_map_cities()
-    except Exception:
-        cat.map_cities = []
-    return cat
+        if not path.is_file():
+            return []
+        age = time.time() - path.stat().st_mtime
+        # Prefer stale disk over blocking network on the UI thread.
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            return []
+        out: list[RelayCity] = []
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            try:
+                out.append(
+                    RelayCity(
+                        country_code=str(row.get("cc") or "").lower(),
+                        country_name=str(row.get("cn") or ""),
+                        city_code=str(row.get("yc") or "").lower(),
+                        city_name=str(row.get("yn") or ""),
+                        latitude=float(row.get("lat")),
+                        longitude=float(row.get("lon")),
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+        if out:
+            _MAP_CITIES_MEM = out
+            # Soft TTL: still use data if older, but mark for refresh
+            _ = age
+        return list(out)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return []
 
 
-def fetch_map_cities() -> list[RelayCity]:
+def _save_map_cities_disk(cities: list[RelayCity]) -> None:
+    path = _map_cities_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = [
+            {
+                "cc": c.country_code,
+                "cn": c.country_name,
+                "yc": c.city_code,
+                "yn": c.city_name,
+                "lat": c.latitude,
+                "lon": c.longitude,
+            }
+            for c in cities
+        ]
+        path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def fetch_map_cities(*, timeout: float = 8.0) -> list[RelayCity]:
     """City markers from Mullvad's public app API (for map display)."""
+    global _MAP_CITIES_MEM
     req = urllib.request.Request(
         RELAYS_API,
         headers={"User-Agent": "Reach/0.4 (Mullvad map; open-source client)"},
     )
-    with urllib.request.urlopen(req, timeout=12) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         data = json.loads(resp.read().decode("utf-8"))
     locations = data.get("locations") or {}
     out: list[RelayCity] = []
@@ -382,8 +455,56 @@ def fetch_map_cities() -> list[RelayCity]:
                 longitude=lon,
             )
         )
+    if out:
+        _MAP_CITIES_MEM = out
+        _save_map_cities_disk(out)
     return out
+
+
+def get_map_cities(*, allow_network: bool = True) -> list[RelayCity]:
+    """Map cities: memory → disk → (optional) network. Safe for UI if allow_network=False."""
+    global _MAP_CITIES_MEM
+    if _MAP_CITIES_MEM is not None:
+        return list(_MAP_CITIES_MEM)
+    disk = load_map_cities_disk()
+    if disk:
+        return disk
+    if not allow_network:
+        return []
+    try:
+        return fetch_map_cities()
+    except Exception:
+        return []
+
+
+@lru_cache(maxsize=1)
+def load_catalog() -> RelayCatalog:
+    """Countries / cities / hosts from CLI (cached for process lifetime).
+
+    Map city coordinates come from get_map_cities (disk/network) and must not
+    re-block if the public API is already cached on disk.
+    """
+    if not cli_path():
+        cat = RelayCatalog()
+        cat.map_cities = get_map_cities(allow_network=True)
+        return cat
+    code, out = _run("relay", "list", timeout=45.0)
+    if code != 0 or not out:
+        cat = RelayCatalog()
+        cat.map_cities = get_map_cities(allow_network=True)
+        return cat
+    cat = _parse_relay_list(out)
+    # Prefer disk/memory first so catalog load is not 1.5s+ of API on cold net
+    cities = get_map_cities(allow_network=False)
+    if not cities:
+        try:
+            cities = fetch_map_cities(timeout=6.0)
+        except Exception:
+            cities = []
+    cat.map_cities = cities
+    return cat
 
 
 def clear_catalog_cache() -> None:
     load_catalog.cache_clear()
+    # Keep disk map-city cache; only clear process CLI catalog.

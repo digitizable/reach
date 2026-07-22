@@ -1,4 +1,15 @@
-"""Navigation destinations — primary operator IA."""
+"""Navigation destinations — primary Reach IA.
+
+Parent pages on the rail; detail lives in sub-pages (hubs):
+  Paths → recipes · adapters
+  Settings → plugins · core · network · …
+
+Rail sections (expanded labels):
+  Run · Path · Workspace · Operate · System
+
+**Operate** (marketplace + installed plugins) is gated by
+``config.operate_enabled`` — Privacy/Lab stay path-first.
+"""
 
 from __future__ import annotations
 
@@ -13,71 +24,111 @@ class NavItem:
     tooltip: str
     """Optional asset under data/assets/ (e.g. globe SVG) instead of icon_name."""
     icon_asset: str | None = None
-    """When True, draw a quiet section divider above this item."""
+    """Absolute path to a plugin SVG/PNG (takes priority over icon_name)."""
+    icon_path: str | None = None
+    """When True, draw a quiet section divider above this item (legacy)."""
     section_start: bool = False
+    """official = core Reach; plugin = marketplace / installed plugin page."""
+    kind: str = "official"  # official | plugin | marketplace
+    """Rail group: run | path | workspace | operate | system."""
+    section: str = "run"
 
 
-# Order is the mental model:
-#   Status → compose path → open doors → carve-outs → lab tools → settings
+# Display order + expanded label for each rail section
+RAIL_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("run", "Run"),
+    ("path", "Path"),
+    ("workspace", "Workspace"),
+    ("operate", "Operate"),
+    ("system", "System"),
+)
+
+# Order: run → path → workspace → operate → system
 NAV_ITEMS: tuple[NavItem, ...] = (
     NavItem(
         id="home",
         title="Home",
         icon_name="go-home-symbolic",
-        tooltip="Home — status and Connect",
+        tooltip="Status and Connect",
+        section="run",
     ),
     NavItem(
-        id="profiles",
+        id="paths",
         title="Paths",
         icon_name="view-list-symbolic",
-        tooltip="Paths — ordered hop recipes (profiles)",
+        tooltip="Recipes and adapters",
+        icon_asset="paths.svg",
         section_start=True,
-    ),
-    NavItem(
-        id="backends",
-        title="Adapters",
-        icon_name="network-server-symbolic",
-        tooltip="Adapters — VPN, Tor, REALITY, proxy backends",
+        section="path",
     ),
     NavItem(
         id="china",
-        title="Doors",
+        title="Territories",
         icon_name="network-workgroup-symbolic",
-        tooltip="Doors — territory ingress (inbound or dial-out)",
+        tooltip="Reach into a region (special setups)",
         icon_asset="globe.svg",
-        section_start=True,
+        section="path",
     ),
     NavItem(
         id="apps",
         title="Apps",
         icon_name="view-app-grid-symbolic",
-        tooltip="Apps — run selected apps on clearnet (exclude from path)",
+        tooltip="Open apps on clearnet",
+        section="workspace",
     ),
     NavItem(
         id="tools",
         title="Tools",
         icon_name="applications-engineering-symbolic",
-        tooltip="Tools — Drift, Mirage, Sounding (lab)",
+        tooltip="Diagnostics and lab tools",
+        section="workspace",
+    ),
+    NavItem(
+        id="marketplace",
+        title="Plugins",
+        icon_name="application-x-addon-symbolic",
+        tooltip="Install operator tools (Hogwarts C2, …)",
+        kind="marketplace",
         section_start=True,
+        section="operate",
     ),
     NavItem(
         id="settings",
         title="Settings",
         icon_name="preferences-system-symbolic",
-        tooltip="Settings",
+        tooltip="Core, network, privacy, posture…",
         section_start=True,
+        section="system",
     ),
 )
 
 DEFAULT_PAGE = "home"
 
-# Map nav id → short chrome subtitle when not overridden by core state
 PAGE_SUBTITLES: dict[str, str] = {
     "home": "Status",
+    "paths": "Paths",
     "profiles": "Paths",
     "backends": "Adapters",
-    "china": "Doors",
-    "apps": "Exclude apps",
-    "tools": "Lab tools",
+    "china": "Territories",
+    "apps": "Apps",
+    "tools": "Tools",
+    "marketplace": "Plugins",
     "settings": "Settings",
 }
+
+
+def official_nav_items() -> tuple[NavItem, ...]:
+    return tuple(i for i in NAV_ITEMS if i.kind in ("official", "marketplace"))
+
+
+def items_for_section(section_id: str) -> tuple[NavItem, ...]:
+    return tuple(i for i in NAV_ITEMS if i.section == section_id)
+
+
+def is_operate_page(page_id: str) -> bool:
+    """True if this stack page belongs to the Operate suite."""
+    if not page_id:
+        return False
+    if page_id == "marketplace" or page_id.startswith("plugin:"):
+        return True
+    return False

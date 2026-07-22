@@ -64,12 +64,21 @@ def fit_body(child: Gtk.Widget, *, margin: int = 12) -> Gtk.Widget:
 
 
 def scroll_body(child: Gtk.Widget, *, margin: int = 12) -> Gtk.Widget:
-    """Scrollable content for tall pages (settings / editors)."""
-    scroll = Gtk.ScrolledWindow()
-    scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroll.set_hexpand(True)
-    scroll.set_vexpand(True)
-    scroll.add_css_class("fit-body")
+    """Scrollable content for tall pages (settings / editors).
+
+    Never propagates the child's natural size into the window — the shell
+    stays user-sized; overflow scrolls. That avoids glitchy resize fights
+    when opening tall sub-pages (e.g. REALITY diagram).
+    """
+    from widgets.scroll import scrolled_window
+
+    scroll = scrolled_window(
+        h_policy=Gtk.PolicyType.NEVER,
+        v_policy=Gtk.PolicyType.AUTOMATIC,
+        css_class="fit-body",
+    )
+    scroll.set_propagate_natural_width(False)
+    scroll.set_propagate_natural_height(False)
 
     wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     wrap.set_margin_top(margin)
