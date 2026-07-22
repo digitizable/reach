@@ -36,7 +36,7 @@ Reach ships a small core. Extra capability is opt-in.
 | **Built-in packs** | Path fingerprint measurement; installer UI for companion tools (Settings → Plugins) |
 | **Marketplace** | GitHub installs (`owner/repo`) into `~/.local/share/reach/plugins/` |
 
-Official marketplace example: **[Hogwarts](https://github.com/digitizable/reach-plugin-hogwarts)** — command-and-control desk (agents, control plane, listeners, playbooks).
+Official marketplace example: **[Hogwarts](https://github.com/digitizable/hogwarts)** — command-and-control desk (agents, control plane, listeners, playbooks).
 
 Plugin format: [docs/PLUGIN_SPEC.md](docs/PLUGIN_SPEC.md). Template: [examples/reach-plugin-hello](examples/reach-plugin-hello).
 
@@ -59,7 +59,7 @@ These are separate repositories. Reach does not embed them unless you install th
 | [Mirage](https://github.com/digitizable/mirage) | REALITY cover in front of reverse accept |
 | [Sounding](https://github.com/digitizable/sounding) | Measurement utilities for faces and residual paths |
 | [Laminar](https://github.com/digitizable/laminar) | Multi-hop composition / fingerprint measurement |
-| [Hogwarts](https://github.com/digitizable/reach-plugin-hogwarts) | Optional C2 plugin for Reach |
+| [Hogwarts](https://github.com/digitizable/hogwarts) | Optional C2 plugin for Reach |
 
 ```
 Reach (desktop UI)

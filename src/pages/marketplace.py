@@ -603,7 +603,7 @@ class MarketplacePage(Gtk.Box):
             return (
                 "Hogwarts is the C2 keep for Reach (named for Hogwarts): "
                 "channels, listeners, egress, and playbooks. Install from GitHub "
-                f"({item.get('repo') or 'digitizable/reach-plugin-hogwarts'}). "
+                f"({item.get('repo') or 'digitizable/hogwarts'}). "
                 "After install it appears under Plugins in the sidebar."
             )
         if item.get("on_disk") or item.get("installed"):

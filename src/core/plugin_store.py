@@ -46,7 +46,7 @@ OFFICIAL_CATALOG: tuple[dict[str, Any], ...] = (
         "official": True,
         "builtin": False,
         "category": "operator",
-        "repo": "digitizable/reach-plugin-hogwarts",
+        "repo": "digitizable/hogwarts",
         "branch": "main",
     },
     {
