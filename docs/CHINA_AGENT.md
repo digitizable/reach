@@ -54,17 +54,15 @@ cd ~/.local/share/reach/reverse
 
 ## Cover note — GFW PRR (Probe-Resistant Reverse)
 
-Optional REALITY face in front of reverse accept (see **Mirage** /
-`scripts/gfw-prr-gen.py`). Operator-generated Xray client/server JSON and
-meta stay **out of git** (use a private deploy dir or `*.local.json`).
+Optional REALITY face in front of reverse accept lives in the lab companions,
+not in this tree:
 
-| Port | Role |
-|------|------|
-| cover (e.g. `18444`) | Public REALITY face (no SPECTRE banner to random probes) |
-| accept (e.g. `18443`) | Naked SPECTRE accept (lab; prefer loopback-only later) |
-| DATA range | DATA dial-back ports on origin |
+| Project | Role |
+|---------|------|
+| [Mirage](https://github.com/digitizable/mirage) | Generate/deploy PRR Xray wrap (`scripts/gfw-prr-gen.py`) |
+| [Sounding](https://github.com/digitizable/sounding) | Probe naked accept vs cover (`scripts/gfw-prr-probe.py`) |
 
-Probe: `python3 scripts/gfw-prr-probe.py --host ORIGIN`.
+Operator-generated Xray JSON stays out of git (private deploy dir or `*.local.json`).
 
 Lab without cover: `./run-inverse-snowflake.sh` straight to the accept port.
 
