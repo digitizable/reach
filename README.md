@@ -104,8 +104,6 @@ python src/main.py
 | Config | `~/.config/reach/config.json` |
 | Data | `~/.local/share/reach/` |
 
-Migration: older **Spectre Desktop** settings under `~/.config/spectre-desktop` are moved to `~/.config/reach` on first run.
-
 Uninstall: `./uninstall.sh`.
 
 ---

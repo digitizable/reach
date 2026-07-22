@@ -124,25 +124,6 @@ mkdir -p "$(dirname "$LAUNCHER_USER")"
 cp -f "$LAUNCHER_PROJECT" "$LAUNCHER_USER"
 chmod +x "$LAUNCHER_USER"
 
-# Compat shim for the old binary name
-LEGACY_LAUNCHER_USER="${XDG_BIN_HOME:-$HOME/.local/bin}/spectre-desktop"
-info "Installing compat launcher: $LEGACY_LAUNCHER_USER → reach"
-cp -f "$LAUNCHER_PROJECT" "$LEGACY_LAUNCHER_USER"
-chmod +x "$LEGACY_LAUNCHER_USER"
-
-# Drop legacy desktop/icon registration (Spectre Desktop → Reach)
-LEGACY_APP_ID="com.digitizable.spectre-desktop"
-LEGACY_DESKTOP="${XDG_DATA_HOME:-$HOME/.local/share}/applications/${LEGACY_APP_ID}.desktop"
-LEGACY_ICON="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps/${LEGACY_APP_ID}.svg"
-if [[ -e "$LEGACY_DESKTOP" ]]; then
-  info "Removing legacy desktop entry: $LEGACY_DESKTOP"
-  rm -f "$LEGACY_DESKTOP"
-fi
-if [[ -e "$LEGACY_ICON" ]]; then
-  info "Removing legacy icon: $LEGACY_ICON"
-  rm -f "$LEGACY_ICON"
-fi
-
 if [[ ! -f "$ICON_SRC" ]]; then
   die "Icon not found: $ICON_SRC"
 fi
