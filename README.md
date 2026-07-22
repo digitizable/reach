@@ -8,7 +8,7 @@
 
 The path engine is **[Spectre](https://github.com/digitizable/spectre)** (`spectred`). Reach talks to it over a local Unix socket.
 
-**Platform:** Linux · **UI:** GTK 4 / libadwaita · **Version:** 0.6.0
+**Platform:** Linux · **UI:** GTK 4 / libadwaita · **Version:** 0.6.1
 
 ---
 
