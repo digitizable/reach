@@ -159,3 +159,12 @@ Updates: Settings → Updates checks [GitHub Releases](https://github.com/digiti
 |--|---------|
 | **BTC** | `sp1qqgly4w3je7m64xh72047u04hwyflyqqf3rfmxchmyht5dndpas4txqsuj9e0jc9l3yql9c3k5el3quyxfh6kr6c9zplmaavj59kuk5kny5jf7cjr` |
 | **XMR** | `89SWJrVXxEgHNiVNSEdjWsXMtRzpzoUX7ebToit9x7iuQADTZh5BGVjTywoQ4gn3SuSEzDhXpCEybi17HpwgYs7v2Xfjdue` |
+
+---
+
+## Contrib (measurement lab)
+
+[`contrib/sounding/`](./contrib/sounding/) — residual open CONNECT harvest, invite probes, Mirage cover-face comparison. **Experimental.** Not required for day-to-day path use.
+
+Reverse dial-out / REALITY cover live in **[Spectre contrib](https://github.com/digitizable/spectre/tree/main/contrib)** (Drift, Mirage).
+

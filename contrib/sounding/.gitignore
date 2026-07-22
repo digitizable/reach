@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+cn-connect-live.json
+*.jsonl
+/var/
+.env
