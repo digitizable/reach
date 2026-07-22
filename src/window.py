@@ -543,6 +543,7 @@ class ReachWindow(Adw.ApplicationWindow):
                 # force_core=False: status just fetched (or cache-warm).
                 self._home.refresh(live=False, force_core=False)
             self._sync_chrome()
+            self._enforce_sensitive_ops_gate()
             if self._apps is not None and hasattr(self._apps, "refresh_status_line"):
                 try:
                     self._apps.refresh_status_line()
@@ -558,6 +559,18 @@ class ReachWindow(Adw.ApplicationWindow):
         except Exception:
             pass
         return True  # keep timer
+
+    def _enforce_sensitive_ops_gate(self) -> None:
+        """If path drops while on Operate pages, leave those surfaces."""
+        if self._page_stack is None or not self._ready:
+            return
+        if self._services.sensitive_ops_allowed():
+            return
+        cur = self._page_stack.get_visible_child_name()
+        if not cur or not is_operate_page(cur):
+            return
+        self.toast(self._services.sensitive_ops_block_message())
+        self._navigate("home")
 
     def _persist_geometry(self) -> None:
         try:
@@ -1172,6 +1185,9 @@ class ReachWindow(Adw.ApplicationWindow):
         if cur and is_operate_page(cur):
             if not bool(getattr(self._services.config, "operate_enabled", False)):
                 self._navigate(DEFAULT_PAGE)
+            elif not self._services.sensitive_ops_allowed():
+                self.toast(self._services.sensitive_ops_block_message())
+                self._navigate(DEFAULT_PAGE)
             elif cur.startswith("plugin:"):
                 pid = cur.removeprefix("plugin:")
                 if not self._services.installed_plugin_active(pid):
@@ -1260,6 +1276,16 @@ class ReachWindow(Adw.ApplicationWindow):
                 self._fill_remaining_pages()
                 if self._page_stack.get_child_by_name("settings") is None:
                     return
+
+        # Sensitive Operate work requires an active path unless policy opts out
+        if is_operate_page(page_id) and not self._services.sensitive_ops_allowed():
+            self.toast(self._services.sensitive_ops_block_message())
+            # Stay on current page if already somewhere safe; else Home
+            cur = self._page_stack.get_visible_child_name()
+            if cur and not is_operate_page(cur):
+                page_id, section = cur, ""
+            else:
+                page_id, section = "home", ""
 
         if self._page_stack.get_child_by_name(page_id) is None:
             # Staged boot: non-Home pages may land one idle later

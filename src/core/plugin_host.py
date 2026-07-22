@@ -41,6 +41,28 @@ class PluginContext:
         p.mkdir(parents=True, exist_ok=True)
         return p.joinpath(*parts) if parts else p
 
+    def sensitive_ops_allowed(self) -> bool:
+        """True if Operate/agent work is allowed (path connected or policy opt-out)."""
+        svc = self.services
+        if svc is not None and hasattr(svc, "sensitive_ops_allowed"):
+            return bool(svc.sensitive_ops_allowed())
+        return True
+
+    def ensure_sensitive_ops(self, *, toast_if_blocked: bool = True) -> bool:
+        """Return False when sensitive ops are gated; optionally toast the reason."""
+        if self.sensitive_ops_allowed():
+            return True
+        if toast_if_blocked and self.toast is not None:
+            msg = ""
+            svc = self.services
+            if svc is not None and hasattr(svc, "sensitive_ops_block_message"):
+                msg = str(svc.sensitive_ops_block_message() or "")
+            self.toast(
+                msg
+                or "Connect a path before using this plugin"
+            )
+        return False
+
 
 def _load_module(manifest: PluginManifest, root: Path):
     mod_name = manifest.entry.module.replace("/", ".").replace("\\", ".")

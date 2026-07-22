@@ -54,7 +54,7 @@ _SECTIONS: tuple[_Section, ...] = (
     _Section(
         "privacy",
         "Privacy",
-        "WebRTC · UDP policy",
+        "WebRTC · path gate · UDP policy",
         "security-high-symbolic",
     ),
     _Section(
@@ -808,7 +808,9 @@ class SettingsPage(Gtk.Box):
     def _group_privacy(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
         g.set_title("Privacy")
-        g.set_description("Desktop policy hints for adapters and browsers")
+        g.set_description(
+            "Desktop policy for adapters, browsers, and sensitive Operate work"
+        )
 
         self._webrtc = Adw.SwitchRow(
             title="Discourage WebRTC leaks",
@@ -823,7 +825,73 @@ class SettingsPage(Gtk.Box):
         )
         self._udp.set_active(self._cfg.block_udp_non_tunnel)
         g.add(self._udp)
+
+        # Default ON for path requirement ⇒ switch shows "allow without path" OFF
+        self._allow_sensitive_no_path = Adw.SwitchRow(
+            title="Allow sensitive operations without a path",
+            subtitle=(
+                "Off (recommended): Operate plugins, agents, and marketplace "
+                "require an active Connect (VPN/privacy path). "
+                "On: permit that work on clearnet — confirmation required."
+            ),
+        )
+        self._allow_sensitive_no_path.set_active(
+            bool(getattr(self._cfg, "allow_sensitive_without_path", False))
+        )
+        self._allow_sensitive_no_path.set_tooltip_text(
+            "Sensitive work (C2 agents, operator plugins) can leak identity "
+            "without a path. Keep this off unless you accept that risk."
+        )
+        self._sensitive_gate_guard = False
+        self._allow_sensitive_no_path.connect(
+            "notify::active", self._on_allow_sensitive_no_path_toggled
+        )
+        g.add(self._allow_sensitive_no_path)
         return g
+
+    def _on_allow_sensitive_no_path_toggled(self, row: Adw.SwitchRow, *_a) -> None:
+        """Require explicit confirmation before enabling clearnet-sensitive mode."""
+        if getattr(self, "_sensitive_gate_guard", False):
+            return
+        want = bool(row.get_active())
+        # Turning off is always allowed without a prompt
+        if not want:
+            return
+
+        # Revert until the user confirms
+        self._sensitive_gate_guard = True
+        row.set_active(False)
+        self._sensitive_gate_guard = False
+
+        root = self.get_root()
+        parent = root if isinstance(root, Gtk.Window) else None
+        dialog = Adw.MessageDialog(
+            transient_for=parent,
+            heading="Allow sensitive work without a path?",
+            body=(
+                "Operate tools (including agent control and marketplace plugins) "
+                "will be usable while disconnected from any VPN or privacy path.\n\n"
+                "Traffic may leave this machine on clearnet and can expose your "
+                "identity or location. Only continue if you accept that risk."
+            ),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("enable", "Enable anyway")
+        dialog.set_response_appearance(
+            "enable", Adw.ResponseAppearance.DESTRUCTIVE
+        )
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response != "enable":
+                return
+            self._sensitive_gate_guard = True
+            row.set_active(True)
+            self._sensitive_gate_guard = False
+
+        dialog.connect("response", on_response)
+        dialog.present()
 
     def _group_logging(self) -> Adw.PreferencesGroup:
         g = Adw.PreferencesGroup()
@@ -1092,6 +1160,14 @@ class SettingsPage(Gtk.Box):
         cfg.mtu = int(self._mtu.get_value())
         prev_plugins = list(cfg.plugins_enabled or [])
         prev_operate = bool(getattr(cfg, "operate_enabled", False))
+        prev_sensitive = bool(
+            getattr(cfg, "allow_sensitive_without_path", False)
+        )
+        # Privacy section may not be built yet if user never opened it
+        if getattr(self, "_allow_sensitive_no_path", None) is not None:
+            cfg.allow_sensitive_without_path = bool(
+                self._allow_sensitive_no_path.get_active()
+            )
         cfg.plugins_enabled = self._collect_plugins_enabled()
         cfg.operate_enabled = self._collect_operate_enabled()
         self._refresh_plugins_summary()
@@ -1109,8 +1185,11 @@ class SettingsPage(Gtk.Box):
                 app.apply_tray_settings()
             except Exception:
                 pass
+        new_sensitive = bool(getattr(cfg, "allow_sensitive_without_path", False))
         posture_changed = (
-            prev_plugins != cfg.plugins_enabled or prev_operate != cfg.operate_enabled
+            prev_plugins != cfg.plugins_enabled
+            or prev_operate != cfg.operate_enabled
+            or prev_sensitive != new_sensitive
         )
         if posture_changed and self._on_plugins_changed:
             try:
@@ -1133,4 +1212,8 @@ class SettingsPage(Gtk.Box):
                         operate_enabled=bool(cfg.operate_enabled),
                     )
                 )
+                if new_sensitive:
+                    msg += " · sensitive ops allowed without path"
+                elif prev_sensitive and not new_sensitive:
+                    msg += " · path required for sensitive ops"
             self._on_toast(msg)

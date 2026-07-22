@@ -84,6 +84,10 @@ class AppConfig:
     # Operator suite: marketplace + C2 plugins on the rail (Privacy/Lab hide them).
     operate_enabled: bool = False
 
+    # When False (default), Operate plugins / agent work require an active path
+    # (Spectre CONNECTED — VPN or multi-hop). When True, that gate is off.
+    allow_sensitive_without_path: bool = False
+
     # Left rail: expanded shows section labels (Run / Path / …)
     rail_expanded: bool = False
 
@@ -131,6 +135,10 @@ class AppConfig:
                 data["operate_enabled"] = False
         else:
             data["operate_enabled"] = bool(data.get("operate_enabled"))
+        if "allow_sensitive_without_path" in data:
+            data["allow_sensitive_without_path"] = bool(
+                data.get("allow_sensitive_without_path")
+            )
         try:
             return cls(**data)
         except TypeError:
@@ -268,6 +276,33 @@ class Services:
             return self.core.status().state == CoreState.CONNECTED
         except Exception:
             return False
+
+    def require_path_for_sensitive_ops(self) -> bool:
+        """True when sensitive Operate work must run behind an active path."""
+        return not bool(getattr(self.config, "allow_sensitive_without_path", False))
+
+    def sensitive_ops_allowed(self) -> bool:
+        """True if operator/plugin work is allowed under current policy + path.
+
+        Default: require Spectre CONNECTED (active VPN/path). Settings can allow
+        operating without a path after explicit confirmation.
+        """
+        if not self.require_path_for_sensitive_ops():
+            return True
+        return self.is_path_connected()
+
+    def sensitive_ops_block_message(self) -> str:
+        """Short reason when sensitive_ops_allowed() is False."""
+        if self.sensitive_ops_allowed():
+            return ""
+        return (
+            "Connect a path (VPN/privacy hop) before using Operate tools, "
+            "agents, or marketplace plugins — or allow this in Settings → Privacy"
+        )
+
+    def ensure_sensitive_ops_allowed(self) -> bool:
+        """Return True if sensitive ops are allowed; False when gated."""
+        return self.sensitive_ops_allowed()
 
     def with_reconnect_hint(self, message: str) -> str:
         """Append a reconnect reminder when the path is live.

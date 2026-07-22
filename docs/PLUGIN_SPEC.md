@@ -94,6 +94,8 @@ def create_page(ctx):
     ctx.toast(msg)
     ctx.navigate(page_id)
     ctx.data_path(*parts)  — writable per-plugin data
+    ctx.sensitive_ops_allowed()  — path connected or policy opt-out
+    ctx.ensure_sensitive_ops()   — False + toast when gated
     """
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
     box.add_css_class("page")
@@ -104,6 +106,19 @@ def create_page(ctx):
     box.append(title)
     return box
 ```
+
+### Sensitive operations (path gate)
+
+By default Reach requires an **active path** (Spectre `CONNECTED`) before opening
+Operate surfaces (marketplace and installed operator plugins such as Hogwarts).
+This protects agent/C2 traffic from clearnet exposure.
+
+- Host enforcement: navigation to Operate pages is blocked when the gate is active.
+- Plugins should still call `ctx.ensure_sensitive_ops()` before high-risk actions
+  (agent shell, enroll, etc.) if they perform work without navigating.
+- Users may disable the gate under **Settings → Privacy → Allow sensitive
+  operations without a path** (confirmation required). Default is **off**
+  (path required).
 
 ## Sidebar
 
