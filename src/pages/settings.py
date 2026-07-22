@@ -37,7 +37,7 @@ _SECTIONS: tuple[_Section, ...] = (
         "Spectre core",
         "Socket · token · reconnect",
         "network-server-symbolic",
-        asset="spectre.svg",
+        asset="spectre.png",
     ),
     _Section(
         "session",

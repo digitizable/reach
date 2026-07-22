@@ -11,10 +11,12 @@
 - **paths.svg:** In-house multi-hop chain (three nodes + links) for the Paths sidebar
 - **recipes.svg:** [Lucide `book-open`](https://lucide.dev/icons/book-open) — **ISC License** ([lucide-icons/lucide](https://github.com/lucide-icons/lucide)); open recipe-book glyph for the Recipes pane
 
-## Spectre mark (ghost glyph)
+## Spectre mark (monogram)
 
-- **Glyph:** [Game Icons “spectre”](https://game-icons.net/1x1/lorc/spectre.html) by Lorc — **CC BY 3.0**
-- **Use:** `data/assets/spectre.svg` on Settings → Spectre core (recolored to UI theme)
+- **Mark:** Spectre monogram (S with dual arrows) — same art as Spectre / [anguish.sh Spectre](https://anguish.sh/projects/spectre)
+- **Source asset:** `spectre/docs/assets/spectre-icon-v2.png` (white monogram on black rounded plate)
+- **Reach processing:** black plate removed → transparent; glyph recolored to UI blue-ish (`#c7d4ee`) at load
+- **Use:** `data/assets/spectre.png` on Settings → Spectre core and Tools → Core status
 
 ## Tray locks (connected / disconnected / connecting)
 

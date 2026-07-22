@@ -11,7 +11,7 @@
 | `recipes.svg` | Paths → Recipes pane — open recipe book (Lucide `book-open`, white stroke) |
 | `map-cn.svg` / `mainland-china.svg` | China silhouette (mask for flag fill on Territories) |
 | `map-ir.svg` `map-ru.svg` `map-tr.svg` `map-cu.svg` `map-ae.svg` | Territory silhouettes (flag-filled at runtime) |
-| `spectre.svg` / `spectre.png` | Spectre core mark (Game Icons “spectre” by Lorc, CC BY 3.0); recolored in Settings |
+| `spectre.png` | Spectre monogram (S + dual arrows); black plate knocked out, recolored blue-ish in Settings / Tools |
 | Other files | Path marks (Tor/REALITY/Mullvad), etc. |
 
 **Mark:** [path-distance](https://game-icons.net/1x1/delapouite/path-distance.html) by Delapouite ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)).  
