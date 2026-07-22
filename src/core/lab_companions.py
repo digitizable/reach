@@ -62,7 +62,7 @@ COMPANIONS: tuple[Companion, ...] = (
         binary="sounding",
         github="digitizable/sounding",
         primary_script="scripts/gfw-prr-probe.py",
-        also_bins=("gfw-prr-probe", "harvest-cn-connect"),
+        also_bins=("gfw-prr-probe",),
     ),
     Companion(
         id="laminar",

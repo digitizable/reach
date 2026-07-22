@@ -54,25 +54,19 @@ cd ~/.local/share/reach/reverse
 
 ## Cover note — GFW PRR (Probe-Resistant Reverse)
 
-**Production path (manipulate DPI / active probe face):**
-
-```bash
-# On M: Xray client + Inverse Snowflake through REALITY wrap
-./run-inverse-snowflake-prr.sh
-# control: 127.0.0.1:11843 → origin:18444 REALITY → accept
-# DATA: still dials origin 18500–18599 (short flows)
-```
+Optional REALITY face in front of reverse accept (see **Mirage** /
+`scripts/gfw-prr-gen.py`). Operator-generated Xray client/server JSON and
+meta stay **out of git** (use a private deploy dir or `*.local.json`).
 
 | Port | Role |
 |------|------|
-| `18444` | Public REALITY cover (no SPECTRE banner to random probes) |
-| `18443` | Naked SPECTRE accept (lab; prefer loopback-only later) |
-| `18500–18599` | DATA dial-back |
+| cover (e.g. `18444`) | Public REALITY face (no SPECTRE banner to random probes) |
+| accept (e.g. `18443`) | Naked SPECTRE accept (lab; prefer loopback-only later) |
+| DATA range | DATA dial-back ports on origin |
 
-Origin: `spectre-prr-cover.service` + `spectre-reverse-accept.service`.  
 Probe: `python3 scripts/gfw-prr-probe.py --host ORIGIN`.
 
-Lab without cover: `./run-inverse-snowflake.sh` straight to `:18443`.
+Lab without cover: `./run-inverse-snowflake.sh` straight to the accept port.
 
 ## Related
 

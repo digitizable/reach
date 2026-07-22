@@ -92,9 +92,11 @@ repo/
 *.log
 logs/
 
-# Local operator secrets (never commit real origin / REALITY material)
+# Local operator / lab outputs (never commit)
 scripts/*.local.json
-scripts/prr-meta.local.json
-scripts/xray-prr-client.local.json
+scripts/cn-connect-live.json
+scripts/TRIALS.md
 scripts/TOKEN
 scripts/pairing.json
+scripts/prr-meta.json
+scripts/xray-prr-client.json
