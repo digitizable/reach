@@ -91,3 +91,10 @@ repo/
 # Logs
 *.log
 logs/
+
+# Local operator secrets (never commit real origin / REALITY material)
+scripts/*.local.json
+scripts/prr-meta.local.json
+scripts/xray-prr-client.local.json
+scripts/TOKEN
+scripts/pairing.json
