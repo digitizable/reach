@@ -142,7 +142,6 @@ Updates: Settings → Updates checks [GitHub Releases](https://github.com/digiti
 ## Security
 
 - Plugins load as in-process Python UI. Install only repositories you trust.
-- Operator plugins (including Hogwarts) are for systems and engagements you are authorized to control.
 - Network paths and kill-switch behavior depend on Spectre and host privileges; misconfiguration can block connectivity or leak traffic—verify with your own tests before relying on a setup.
 
 ---
